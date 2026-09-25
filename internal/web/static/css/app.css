@@ -179,3 +179,11 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; text-align: center
 .history-entry p { margin: 6px 0 0; }
 .steps { background: var(--surface-2); border-radius: var(--radius); padding: 8px 10px; margin: 8px 0 0; overflow: auto; }
 .history-entry summary { cursor: pointer; margin-top: 8px; color: var(--text-2); }
+
+/* Settings */
+.notifier-row { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.check { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 400; }
+.check input { width: auto; height: auto; }
+.notifier-form { margin-top: 12px; padding: 14px; background: var(--surface-2); border-radius: var(--radius); }
+.form-actions { margin-top: 12px; }
+.token { background: var(--surface-2); border-radius: 4px; padding: 2px 8px; overflow-wrap: anywhere; }
