@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,5 +91,43 @@ func TestCheckAsksForTheImagesOwnPlatform(t *testing.T) {
 	}
 	if reg.platform != (registry.Platform{OS: "linux", Arch: "arm64", Variant: "v8"}) {
 		t.Fatalf("labels were requested for %+v", reg.platform)
+	}
+}
+
+// The same problem on every cycle (a registry that is down, a rate limit) is
+// worth one log line, not one per check.
+func TestCheckLogsTheSameProblemOnlyOnce(t *testing.T) {
+	f := dockertest.New()
+	f.AddImage("app:1", docker.ImageJSON{ID: "sha256:a", RepoDigests: []string{"app@" + dOld}})
+	f.AddContainer("a1", "app", "app:1", nil, true)
+	reg := &fakeRegistry{digestErr: errors.New("registry is down")}
+	e := engineFor(t, f, reg)
+	var buf bytes.Buffer
+	e.Log = log.New(&buf, "", 0)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		if _, err := e.Check(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := strings.Count(buf.String(), "registry is down"); n != 1 {
+		t.Fatalf("the same failure must be logged once, got %d times:\n%s", n, buf.String())
+	}
+
+	reg.digestErr = errors.New("a different failure")
+	e.Check(ctx)
+	if !strings.Contains(buf.String(), "a different failure") {
+		t.Fatalf("a new kind of failure must be logged:\n%s", buf.String())
+	}
+
+	// After it recovered, the same failure is news again.
+	reg.digestErr = nil
+	reg.digests = map[string]string{"app:1": dOld}
+	e.Check(ctx)
+	reg.digestErr = errors.New("a different failure")
+	e.Check(ctx)
+	if n := strings.Count(buf.String(), "a different failure"); n != 2 {
+		t.Fatalf("a failure that comes back after a good check must be logged again, got %d times:\n%s", n, buf.String())
 	}
 }

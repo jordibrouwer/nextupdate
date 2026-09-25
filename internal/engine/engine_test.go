@@ -23,12 +23,16 @@ import (
 )
 
 type fakeRegistry struct {
-	digests  map[string]string
-	labels   map[string]map[string]string
-	platform registry.Platform // what RemoteLabels was last asked for
+	digestErr error // when set, every RemoteDigest call fails with it
+	digests   map[string]string
+	labels    map[string]map[string]string
+	platform  registry.Platform // what RemoteLabels was last asked for
 }
 
 func (r *fakeRegistry) RemoteDigest(ctx context.Context, ref string) (string, error) {
+	if r.digestErr != nil {
+		return "", r.digestErr
+	}
 	if d, ok := r.digests[ref]; ok {
 		return d, nil
 	}

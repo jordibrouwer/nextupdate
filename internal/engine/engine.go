@@ -40,6 +40,9 @@ type Engine struct {
 	RollbackCompose updater.Adapter // Compose adapter with SkipPull
 
 	mu sync.Mutex // one update at a time
+
+	warnMu sync.Mutex
+	warned map[string]string // last message logged per problem, see warn
 }
 
 func (e *Engine) now() time.Time {
@@ -57,6 +60,30 @@ func (e *Engine) logf(format string, a ...any) {
 	}
 }
 
+// warn logs a problem, but not again while the same problem keeps happening:
+// a registry that is down would otherwise fill the log on every check. A
+// different message under the same key is logged, and so is the same message
+// after clearWarn (the step worked in between).
+func (e *Engine) warn(key, format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	e.warnMu.Lock()
+	if e.warned == nil {
+		e.warned = map[string]string{}
+	}
+	prev, seen := e.warned[key]
+	e.warned[key] = msg
+	e.warnMu.Unlock()
+	if !seen || prev != msg {
+		e.logf("%s", msg)
+	}
+}
+
+func (e *Engine) clearWarn(key string) {
+	e.warnMu.Lock()
+	delete(e.warned, key)
+	e.warnMu.Unlock()
+}
+
 func (e *Engine) Check(ctx context.Context) ([]store.Available, error) {
 	containers, err := discovery.Discover(ctx, e.API)
 	if err != nil {
@@ -68,7 +95,7 @@ func (e *Engine) Check(ctx context.Context) ([]store.Available, error) {
 		img, err := e.API.InspectImage(ctx, c.ImageID)
 		gone := errors.Is(err, docker.ErrNotFound)
 		if err != nil && !gone {
-			e.logf("check %s: inspect image: %v", c.Name, err)
+			e.warn("inspect:"+c.Name, "check %s: inspect image: %v", c.Name, err)
 			continue
 		}
 		local, ok := registry.LocalDigest(img, c.Image)
@@ -86,9 +113,10 @@ func (e *Engine) Check(ctx context.Context) ([]store.Available, error) {
 			continue // local build or private repo: nothing to compare with
 		}
 		if err != nil {
-			e.logf("check %s: %v", c.Name, err)
+			e.warn("digest:"+c.Name, "check %s: %v", c.Name, err)
 			continue
 		}
+		e.clearWarn("digest:" + c.Name)
 		if remote == local {
 			continue
 		}
@@ -111,12 +139,12 @@ func (e *Engine) describe(ctx context.Context, c discovery.Container, local dock
 	info := store.Info{Container: c.Name, OldVersion: e.localVersion(ctx, c, local)}
 	remoteLabels, err := e.Registry.RemoteLabels(ctx, c.Image, registry.PlatformOf(local))
 	if err != nil {
-		e.logf("check %s: read remote labels: %v", c.Name, err)
+		e.warn("labels:"+c.Name, "check %s: read remote labels: %v", c.Name, err)
 	}
 	info.NewVersion = remoteLabels[registry.LabelVersion]
 	settings, err := e.Store.GetSettings(c.Name)
 	if err != nil {
-		e.logf("check %s: read settings: %v", c.Name, err)
+		e.warn("settings:"+c.Name, "check %s: read settings: %v", c.Name, err)
 	}
 	mapping, _ := e.Mappings.Lookup(c.Image)
 	var releases []changelog.Release
@@ -125,7 +153,7 @@ func (e *Engine) describe(ctx context.Context, c discovery.Container, local dock
 		if e.Changelog != nil {
 			all, err := e.Changelog.Releases(ctx, repo.Name)
 			if err != nil {
-				e.logf("check %s: release notes: %v", c.Name, err)
+				e.warn("notes:"+c.Name, "check %s: release notes: %v", c.Name, err)
 			}
 			releases = changelog.Between(all, info.OldVersion, info.NewVersion)
 		}

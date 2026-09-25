@@ -104,3 +104,19 @@ func TestDispatcherPushesAndDropsGoneSubscriptions(t *testing.T) {
 		t.Fatalf("the gone subscription must be deleted, the live one kept: %+v", left)
 	}
 }
+
+// serve used to be silent when no notifier was set up: an automatic update left
+// no trace outside the history page.
+func TestDispatcherLogsEveryEventEvenWithoutNotifiers(t *testing.T) {
+	st := newStore(t)
+	var logs strings.Builder
+	d := &Dispatcher{Store: st, BaseURL: "https://nu.example", Log: newLogger(&logs)}
+	d.Notify(context.Background(), scheduler.Event{Kind: scheduler.KindUpdated, Container: "app", Image: "app:latest", OldVersion: "1.0.0", NewVersion: "1.1.0"})
+	d.Notify(context.Background(), scheduler.Event{Kind: scheduler.KindRolledBack, Container: "web", Image: "web:latest", Detail: "verify: healthcheck unhealthy"})
+	out := logs.String()
+	for _, want := range []string{"update_ok: app (app:latest) 1.0.0 to 1.1.0", "update_rolled_back: web (web:latest)", "verify: healthcheck unhealthy"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log lacks %q:\n%s", want, out)
+		}
+	}
+}

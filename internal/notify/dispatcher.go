@@ -74,6 +74,8 @@ func (d *Dispatcher) logf(format string, a ...any) {
 }
 
 func (d *Dispatcher) Notify(ctx context.Context, ev scheduler.Event) {
+	// Always leave a trace in the log, also when no notifier is set up.
+	scheduler.LogNotifier{Log: d.Log}.Notify(ctx, ev)
 	msg := Format(ev, d.BaseURL)
 
 	notifiers, err := d.Store.ListNotifiers()
