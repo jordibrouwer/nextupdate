@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,5 +214,14 @@ func TestSaveSettings(t *testing.T) {
 	}
 	if rec := h.do("PUT", "/api/containers/nope/settings", map[string]any{"policy": "auto"}); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown container: %d", rec.Code)
+	}
+}
+
+func TestJobsEmptyListsAreArrays(t *testing.T) {
+	h := newHarness(t)
+	h.signIn()
+	rec := h.do("GET", "/api/jobs", nil)
+	if body := rec.Body.String(); !strings.Contains(body, `"failed":[]`) || !strings.Contains(body, `"running":[]`) {
+		t.Fatalf("empty lists must be JSON arrays, got %s", body)
 	}
 }

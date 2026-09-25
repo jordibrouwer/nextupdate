@@ -140,3 +140,17 @@ func TestRunStopsWhenContextEnds(t *testing.T) {
 		t.Fatalf("Run should cycle repeatedly, cycled %d times", eng.cleaned)
 	}
 }
+
+func TestRunOnceRecordsLastCheck(t *testing.T) {
+	s, _, _ := setup(t, store.PolicyNotify, store.Info{})
+	if v, _ := s.Store.GetSetting("last_check"); v != "" {
+		t.Fatalf("last_check before the first cycle: %q", v)
+	}
+	if err := s.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	v, _ := s.Store.GetSetting("last_check")
+	if _, err := time.Parse(time.RFC3339, v); err != nil {
+		t.Fatalf("last_check %q is not RFC3339: %v", v, err)
+	}
+}

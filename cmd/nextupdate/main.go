@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -11,9 +12,13 @@ import (
 	"syscall"
 	"time"
 
+	apipkg "github.com/jordibrouwer/nextupdate/internal/api"
+	"github.com/jordibrouwer/nextupdate/internal/auth"
 	"github.com/jordibrouwer/nextupdate/internal/changelog"
 	"github.com/jordibrouwer/nextupdate/internal/docker"
 	"github.com/jordibrouwer/nextupdate/internal/engine"
+	"github.com/jordibrouwer/nextupdate/internal/notify"
+	"github.com/jordibrouwer/nextupdate/internal/push"
 	"github.com/jordibrouwer/nextupdate/internal/registry"
 	"github.com/jordibrouwer/nextupdate/internal/scheduler"
 	"github.com/jordibrouwer/nextupdate/internal/store"
@@ -22,6 +27,9 @@ import (
 )
 
 var _ changelog.Cache = (*store.ChangelogCache)(nil)
+
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
 
 const usage = `usage: nextupdate <command>
 
@@ -114,9 +122,45 @@ func run(ctx context.Context, cmd string, args []string) error {
 		if err := reconcile(ctx, api, journal, runner); err != nil {
 			return err
 		}
+		keys, err := push.EnsureKeys(st)
+		if err != nil {
+			return err
+		}
+		baseURL := os.Getenv("NEXTUPDATE_BASE_URL")
+		pusher := &push.Sender{Keys: keys, Subject: envOr("NEXTUPDATE_PUSH_SUBJECT", "mailto:nextupdate@localhost")}
+		dispatcher := &notify.Dispatcher{Store: st, Push: pusher, BaseURL: baseURL}
+
+		jobCtx, cancelJobs := context.WithCancel(context.Background())
+		defer cancelJobs()
+		server := apipkg.New(apipkg.Deps{
+			Store: st, Engine: eng, Changelog: eng.Changelog, Mappings: eng.Mappings, Push: pusher,
+			BaseURL: baseURL, Version: version, BaseCtx: jobCtx,
+			Auth: &auth.Service{Store: st, Limiter: auth.NewLimiter(5, 15*time.Minute, time.Now)},
+		})
+		httpServer := &http.Server{Addr: envOr("NEXTUPDATE_LISTEN", ":8099"), Handler: server, ReadHeaderTimeout: 10 * time.Second}
+
+		errs := make(chan error, 1)
+		go func() {
+			fmt.Printf("listening on %s\n", httpServer.Addr)
+			if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errs <- err
+			}
+		}()
 		fmt.Printf("serving: checking every %s\n", interval)
-		s := &scheduler.Scheduler{Engine: eng, Store: st, Notifier: scheduler.LogNotifier{}, Interval: interval}
-		return s.Run(ctx)
+		sched := &scheduler.Scheduler{Engine: eng, Store: st, Notifier: dispatcher, Interval: interval}
+		done := make(chan error, 1)
+		go func() { done <- sched.Run(ctx) }()
+
+		select {
+		case err := <-errs:
+			return err
+		case <-ctx.Done():
+		}
+		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = httpServer.Shutdown(shutdown)
+		server.Wait() // let a running update finish; it never gets cancelled halfway
+		return <-done
 	case "check":
 		list, err := eng.Check(ctx)
 		if err != nil {

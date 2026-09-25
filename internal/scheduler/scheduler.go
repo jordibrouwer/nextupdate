@@ -85,6 +85,9 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := s.Store.SetSetting("last_check", time.Now().UTC().Format(time.RFC3339)); err != nil {
+		s.logf("scheduler: record last check: %v", err)
+	}
 	infos, err := s.Store.ListInfo()
 	if err != nil {
 		return err

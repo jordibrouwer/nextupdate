@@ -10,5 +10,6 @@ RUN apk add --no-cache docker-cli docker-cli-compose ca-certificates tzdata
 COPY --from=build /out/nextupdate /usr/local/bin/nextupdate
 ENV NEXTUPDATE_DATA=/data
 VOLUME /data
+EXPOSE 8099
 ENTRYPOINT ["nextupdate"]
 CMD ["serve"]

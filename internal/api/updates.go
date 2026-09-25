@@ -171,7 +171,11 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"running": s.jobs.Running(), "failed": s.jobs.Recent()})
+	failed := s.jobs.Recent()
+	if failed == nil {
+		failed = []Failure{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"running": s.jobs.Running(), "failed": failed})
 }
 
 func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
