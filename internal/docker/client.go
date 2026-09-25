@@ -15,6 +15,7 @@ import (
 const apiVersion = "v1.44"
 
 var ErrNotFound = errors.New("not found")
+var ErrConflict = errors.New("conflict")
 
 type Client struct {
 	hc   *http.Client
@@ -78,6 +79,12 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 		return nil
 	case resp.StatusCode == http.StatusNotFound:
 		return fmt.Errorf("docker %s %s: %w", method, path, ErrNotFound)
+	case resp.StatusCode == http.StatusConflict:
+		var e struct {
+			Message string `json:"message"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		return fmt.Errorf("docker %s %s: %s: %w", method, path, e.Message, ErrConflict)
 	case resp.StatusCode >= 300:
 		var e struct {
 			Message string `json:"message"`
@@ -169,4 +176,8 @@ func (c *Client) RenameContainer(ctx context.Context, id, newName string) error 
 
 func (c *Client) RemoveContainer(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/containers/"+id, url.Values{"force": {"1"}}, nil, nil)
+}
+
+func (c *Client) RemoveImage(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/images/"+id, nil, nil, nil)
 }

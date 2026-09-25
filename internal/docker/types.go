@@ -78,4 +78,5 @@ type API interface {
 	StopContainer(ctx context.Context, id string) error
 	RenameContainer(ctx context.Context, id, newName string) error
 	RemoveContainer(ctx context.Context, id string) error
+	RemoveImage(ctx context.Context, id string) error
 }

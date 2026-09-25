@@ -187,3 +187,28 @@ func (f *Fake) RemoveContainer(ctx context.Context, id string) error {
 	delete(f.Containers, c.ID)
 	return nil
 }
+
+// RemoveImage refuses while a container uses the image, like Docker.
+func (f *Fake) RemoveImage(ctx context.Context, id string) error {
+	f.record("rmi %s", id)
+	found := false
+	for _, img := range f.Images {
+		if img.ID == id {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("image %s: %w", id, docker.ErrNotFound)
+	}
+	for _, c := range f.Containers {
+		if c.Image == id {
+			return fmt.Errorf("image %s in use: %w", id, docker.ErrConflict)
+		}
+	}
+	for k, img := range f.Images {
+		if img.ID == id {
+			delete(f.Images, k)
+		}
+	}
+	return nil
+}

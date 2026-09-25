@@ -51,3 +51,9 @@ CREATE TABLE IF NOT EXISTS changelog_cache (
   body       BLOB    NOT NULL,
   fetched_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS old_images (
+  image_id     TEXT PRIMARY KEY,
+  container    TEXT    NOT NULL,
+  remove_after INTEGER NOT NULL
+);

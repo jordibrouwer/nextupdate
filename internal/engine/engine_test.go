@@ -175,3 +175,55 @@ func TestCheckDescribesUpdates(t *testing.T) {
 		t.Fatalf("missing major-change reason: %v", app.Reasons)
 	}
 }
+
+func TestUpdateTracksOldImageAndCleanupRemovesIt(t *testing.T) {
+	e, _, _ := newEngine(t)
+	f := e.API.(*dockertest.Fake)
+	now := time.UnixMilli(1_700_000_000_000)
+	e.Now = func() time.Time { return now }
+	e.Retention = 24 * time.Hour
+	ctx := context.Background()
+
+	if _, err := e.Update(ctx, "app"); err != nil { // fakeAdapter reports ok, sha256:a to sha256:b
+		t.Fatal(err)
+	}
+	// What real updates would have done: nothing runs sha256:a any more.
+	f.Containers["aaaaaaaaaaaa1"].Image = "sha256:b"
+	f.Containers["w1"].Image = "sha256:b"
+	if err := e.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.Images["sha256:a"]; !ok {
+		t.Fatal("old image removed before the retention period ended")
+	}
+	now = now.Add(25 * time.Hour)
+	if err := e.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.Images["sha256:a"]; ok {
+		t.Fatal("old image not removed after the retention period")
+	}
+	if due, _ := e.Store.DueOldImages(now); len(due) != 0 {
+		t.Fatalf("row not deleted: %+v", due)
+	}
+}
+
+func TestCleanupKeepsImageStillInUse(t *testing.T) {
+	e, _, _ := newEngine(t)
+	f := e.API.(*dockertest.Fake)
+	now := time.UnixMilli(1_700_000_000_000)
+	e.Now = func() time.Time { return now }
+	if err := e.Store.AddOldImage(store.OldImage{ImageID: "sha256:a", Container: "app", RemoveAfter: now.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	// container "app" in the fixture runs sha256:a
+	if err := e.Cleanup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.Images["sha256:a"]; !ok {
+		t.Fatal("image in use was removed")
+	}
+	if due, _ := e.Store.DueOldImages(now); len(due) != 1 {
+		t.Fatalf("row must stay for the next cycle: %+v", due)
+	}
+}

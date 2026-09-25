@@ -115,3 +115,17 @@ func TestSplitRef(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoveImageConflict(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v1.44/images/sha256:abc" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusConflict)
+		io.WriteString(w, `{"message":"image is being used by running container"}`)
+	})
+	err := c.RemoveImage(context.Background(), "sha256:abc")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("want ErrConflict, got %v", err)
+	}
+}

@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestInfoReplaceAndList(t *testing.T) {
 	s := openTest(t)
@@ -38,5 +41,28 @@ func TestChangelogCache(t *testing.T) {
 	etag, body, ok := c.Get("o/n")
 	if !ok || etag != `"e2"` || string(body) != `[2]` {
 		t.Fatalf("got %q %q %v", etag, body, ok)
+	}
+}
+
+func TestOldImages(t *testing.T) {
+	s := openTest(t)
+	base := time.UnixMilli(1_700_000_000_000)
+	for _, o := range []OldImage{
+		{ImageID: "sha256:a", Container: "app", RemoveAfter: base.Add(time.Hour)},
+		{ImageID: "sha256:b", Container: "app", RemoveAfter: base.Add(48 * time.Hour)},
+	} {
+		if err := s.AddOldImage(o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	due, err := s.DueOldImages(base.Add(2 * time.Hour))
+	if err != nil || len(due) != 1 || due[0].ImageID != "sha256:a" {
+		t.Fatalf("due %+v %v", due, err)
+	}
+	if err := s.DeleteOldImage("sha256:a"); err != nil {
+		t.Fatal(err)
+	}
+	if due, _ = s.DueOldImages(base.Add(2 * time.Hour)); len(due) != 0 {
+		t.Fatalf("still due: %+v", due)
 	}
 }

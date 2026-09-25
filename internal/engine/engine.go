@@ -32,6 +32,7 @@ type Engine struct {
 
 	Changelog changelog.Source
 	Mappings  *changelog.Mappings
+	Retention time.Duration // how long an update keeps the previous image; 0 = do not track
 }
 
 func (e *Engine) now() time.Time {
@@ -154,6 +155,35 @@ func (e *Engine) Update(ctx context.Context, name string) (store.History, error)
 		if err := e.Store.RemoveAvailable(name); err != nil {
 			return h, err
 		}
+		if e.Retention > 0 && res.FromImage != "" && res.FromImage != res.ToImage {
+			if err := e.Store.AddOldImage(store.OldImage{ImageID: res.FromImage, Container: name, RemoveAfter: e.now().Add(e.Retention)}); err != nil {
+				return h, err
+			}
+		}
 	}
 	return h, nil
+}
+
+// Cleanup removes old images whose retention period has passed. An image
+// that is still in use is kept and tried again on the next cycle.
+func (e *Engine) Cleanup(ctx context.Context) error {
+	due, err := e.Store.DueOldImages(e.now())
+	if err != nil {
+		return err
+	}
+	for _, o := range due {
+		err := e.API.RemoveImage(ctx, o.ImageID)
+		switch {
+		case err == nil, errors.Is(err, docker.ErrNotFound):
+			if err := e.Store.DeleteOldImage(o.ImageID); err != nil {
+				return err
+			}
+			e.logf("cleanup: removed old image %s of %s", o.ImageID, o.Container)
+		case errors.Is(err, docker.ErrConflict):
+			e.logf("cleanup: old image %s of %s is still in use, keeping it", o.ImageID, o.Container)
+		default:
+			e.logf("cleanup: remove %s: %v", o.ImageID, err)
+		}
+	}
+	return nil
 }

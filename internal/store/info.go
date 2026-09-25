@@ -86,3 +86,42 @@ func (c *ChangelogCache) Put(repo, etag string, body []byte) error {
 		repo, etag, body, time.Now().UnixMilli())
 	return err
 }
+
+// OldImage is an image a successful update left behind. It is kept until
+// RemoveAfter, so a manual rollback stays possible for a while.
+type OldImage struct {
+	ImageID     string
+	Container   string
+	RemoveAfter time.Time
+}
+
+func (s *Store) AddOldImage(o OldImage) error {
+	_, err := s.db.Exec(`INSERT INTO old_images (image_id, container, remove_after) VALUES (?, ?, ?)
+		ON CONFLICT(image_id) DO UPDATE SET container = excluded.container, remove_after = excluded.remove_after`,
+		o.ImageID, o.Container, o.RemoveAfter.UnixMilli())
+	return err
+}
+
+func (s *Store) DueOldImages(now time.Time) ([]OldImage, error) {
+	rows, err := s.db.Query(`SELECT image_id, container, remove_after FROM old_images WHERE remove_after <= ? ORDER BY remove_after`, now.UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OldImage
+	for rows.Next() {
+		var o OldImage
+		var after int64
+		if err := rows.Scan(&o.ImageID, &o.Container, &after); err != nil {
+			return nil, err
+		}
+		o.RemoveAfter = time.UnixMilli(after)
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteOldImage(imageID string) error {
+	_, err := s.db.Exec(`DELETE FROM old_images WHERE image_id = ?`, imageID)
+	return err
+}
