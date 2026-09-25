@@ -139,3 +139,7 @@ export async function boot() {
 
 document.addEventListener('nu:signed-out', () => boot());
 boot();
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => { /* push is optional */ }));
+}

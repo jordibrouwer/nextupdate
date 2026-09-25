@@ -1,6 +1,7 @@
 import { h, clear, append } from '../dom.js';
 import { api } from '../api.js';
 import { toast, confirmDialog, badge } from '../ui.js';
+import { pushState, enablePush, disablePush, sendTestPush } from '../push.js';
 
 const MASK = '********';
 
@@ -200,5 +201,54 @@ export function mountSettings(container) {
         }
     })();
 
-    return { unmount() { alive = false; }, extraHost };
+    // ---- push ----
+    const pushBody = h('div', {});
+    extraHost.append(h('section', { class: 'card' }, h('h2', {}, 'Push notifications'), pushBody));
+
+    async function renderPush() {
+        const state = await pushState();
+        if (!alive) return;
+        const text = {
+            unsupported: 'This browser does not support push notifications.',
+            insecure: 'Push needs HTTPS or localhost.',
+            denied: 'Notifications are blocked for this site. Allow them in the browser settings.',
+            subscribed: 'Push notifications are on for this device.',
+            off: 'Push notifications are off on this device.',
+        }[state];
+        append(clear(pushBody), [
+            h('p', { class: 'muted', dataset: { testid: 'push-status' } }, text),
+            state === 'off' ? h('button', { class: 'btn', type: 'button', onclick: turnOn }, 'Turn on for this device') : null,
+            state === 'subscribed' ? h('div', { class: 'row-flex' },
+                h('button', { class: 'btn', type: 'button', onclick: turnOff }, 'Turn off for this device'),
+                h('button', { class: 'btn', type: 'button', onclick: sendTest }, 'Send a test')) : null]);
+    }
+    async function turnOn() {
+        try {
+            await enablePush();
+            toast('Push notifications are on for this device', 'success');
+        } catch (e) {
+            toast(e.message, 'error');
+        }
+        renderPush();
+    }
+    async function turnOff() {
+        try {
+            await disablePush();
+            toast('Push notifications are off for this device', 'success');
+        } catch (e) {
+            toast(e.message, 'error');
+        }
+        renderPush();
+    }
+    async function sendTest() {
+        try {
+            const r = await sendTestPush();
+            toast(r.sent ? 'Test notification sent' : 'No device received the test. Turn push off and on again.', r.sent ? 'success' : 'warn');
+        } catch (e) {
+            toast(e.message, 'error');
+        }
+    }
+    renderPush();
+
+    return { unmount() { alive = false; } };
 }

@@ -109,3 +109,36 @@ test('the account card names the user and signs out', async ({ page }) => {
     await page.locator('section.card', { hasText: 'Account' }).getByRole('button', { name: 'Sign out' }).click();
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 });
+
+test('the push card explains what is possible in this browser', async ({ page }) => {
+    await page.goto('/#/settings');
+    const card = page.locator('section.card', { has: page.getByRole('heading', { name: 'Push notifications' }) });
+    await expect(card).toBeVisible();
+    const status = page.getByTestId('push-status');
+    await expect(status).toHaveText(/(Push notifications are off on this device\.|This browser does not support push notifications\.|Push needs HTTPS or localhost\.|Notifications are blocked)/);
+});
+
+test('the push card says when notifications are blocked', async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(Notification, 'permission', { get: () => 'denied' }));
+    await page.goto('/#/settings');
+    await expect(page.getByTestId('push-status')).toContainText('Notifications are blocked for this site');
+    await expect(page.getByRole('button', { name: 'Turn on for this device' })).toHaveCount(0);
+});
+
+test('turning push on in a browser that cannot subscribe shows an error, not a broken page', async ({ page }) => {
+    // Headless Chromium has no push service. Pretend permission is granted so the real
+    // subscribe call runs and fails the way it does on a browser without one.
+    await page.addInitScript(() => {
+        Object.defineProperty(Notification, 'permission', { get: () => 'default' });
+        Notification.requestPermission = async () => 'granted';
+    });
+    await page.goto('/#/settings');
+    const on = page.getByRole('button', { name: 'Turn on for this device' });
+    await expect(on).toBeVisible();
+    await on.click();
+    await expect(page.getByTestId('toast').filter({ hasText: "couldn't subscribe" })).toBeVisible();
+    await expect(page.getByTestId('push-status')).toContainText('off on this device');
+    await expect(on).toBeVisible();
+    await expect(page.getByTestId('check-button')).toBeVisible();
+    expect((await (await page.request.get('/api/push/key')).json()).publicKey.length).toBeGreaterThan(40);
+});
