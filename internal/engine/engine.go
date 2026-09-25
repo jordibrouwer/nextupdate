@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jordibrouwer/nextupdate/internal/changelog"
+	"github.com/jordibrouwer/nextupdate/internal/classify"
 	"github.com/jordibrouwer/nextupdate/internal/discovery"
 	"github.com/jordibrouwer/nextupdate/internal/docker"
 	"github.com/jordibrouwer/nextupdate/internal/registry"
@@ -27,6 +29,9 @@ type Engine struct {
 	Self     string // own hostname = own short container ID
 	Log      *log.Logger
 	Now      func() time.Time
+
+	Changelog changelog.Source
+	Mappings  *changelog.Mappings
 }
 
 func (e *Engine) now() time.Time {
@@ -50,6 +55,7 @@ func (e *Engine) Check(ctx context.Context) ([]store.Available, error) {
 		return nil, err
 	}
 	var out []store.Available
+	var infos []store.Info
 	for _, c := range containers {
 		img, err := e.API.InspectImage(ctx, c.ImageID)
 		if err != nil {
@@ -68,14 +74,50 @@ func (e *Engine) Check(ctx context.Context) ([]store.Available, error) {
 			e.logf("check %s: %v", c.Name, err)
 			continue
 		}
-		if remote != local {
-			out = append(out, store.Available{Container: c.Name, Image: c.Image, LocalDigest: local, RemoteDigest: remote, DetectedAt: e.now()})
+		if remote == local {
+			continue
 		}
+		out = append(out, store.Available{Container: c.Name, Image: c.Image, LocalDigest: local, RemoteDigest: remote, DetectedAt: e.now()})
+		infos = append(infos, e.describe(ctx, c, img))
 	}
 	if err := e.Store.ReplaceAvailable(out); err != nil {
 		return nil, err
 	}
+	if err := e.Store.ReplaceInfo(infos); err != nil {
+		return nil, err
+	}
 	return e.Store.ListAvailable()
+}
+
+// describe collects versions, release notes and the breaking verdict of an
+// available update. Missing pieces are logged and left empty: an update
+// without notes is still an update.
+func (e *Engine) describe(ctx context.Context, c discovery.Container, local docker.ImageJSON) store.Info {
+	info := store.Info{Container: c.Name, OldVersion: registry.LocalLabels(local)[registry.LabelVersion]}
+	remoteLabels, err := e.Registry.RemoteLabels(ctx, c.Image)
+	if err != nil {
+		e.logf("check %s: read remote labels: %v", c.Name, err)
+	}
+	info.NewVersion = remoteLabels[registry.LabelVersion]
+	settings, err := e.Store.GetSettings(c.Name)
+	if err != nil {
+		e.logf("check %s: read settings: %v", c.Name, err)
+	}
+	mapping, _ := e.Mappings.Lookup(c.Image)
+	var releases []changelog.Release
+	if repo, ok := changelog.Resolve(c.Image, remoteLabels, e.Mappings, settings.Repo); ok {
+		info.Repo = repo.Name
+		if e.Changelog != nil {
+			all, err := e.Changelog.Releases(ctx, repo.Name)
+			if err != nil {
+				e.logf("check %s: release notes: %v", c.Name, err)
+			}
+			releases = changelog.Between(all, info.OldVersion, info.NewVersion)
+		}
+	}
+	verdict := classify.Classify(info.OldVersion, info.NewVersion, releases, mapping.Breaking)
+	info.Breaking, info.Reasons = verdict.Breaking, verdict.Reasons
+	return info
 }
 
 func (e *Engine) Update(ctx context.Context, name string) (store.History, error) {

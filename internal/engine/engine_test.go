@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jordibrouwer/nextupdate/internal/changelog"
 	"github.com/jordibrouwer/nextupdate/internal/discovery"
 	"github.com/jordibrouwer/nextupdate/internal/docker"
 	"github.com/jordibrouwer/nextupdate/internal/dockertest"
@@ -18,10 +20,13 @@ import (
 	"github.com/jordibrouwer/nextupdate/internal/updater"
 )
 
-type fakeRegistry map[string]string
+type fakeRegistry struct {
+	digests map[string]string
+	labels  map[string]map[string]string
+}
 
 func (r fakeRegistry) RemoteDigest(ctx context.Context, ref string) (string, error) {
-	if d, ok := r[ref]; ok {
+	if d, ok := r.digests[ref]; ok {
 		return d, nil
 	}
 	if ref == "down:1" {
@@ -31,7 +36,13 @@ func (r fakeRegistry) RemoteDigest(ctx context.Context, ref string) (string, err
 }
 
 func (r fakeRegistry) RemoteLabels(ctx context.Context, ref string) (map[string]string, error) {
-	return nil, nil
+	return r.labels[ref], nil
+}
+
+type fakeChangelog struct{ releases []changelog.Release }
+
+func (c fakeChangelog) Releases(ctx context.Context, repo string) ([]changelog.Release, error) {
+	return c.releases, nil
 }
 
 type fakeAdapter struct {
@@ -52,7 +63,8 @@ const (
 func newEngine(t *testing.T) (*Engine, *fakeAdapter, *fakeAdapter) {
 	t.Helper()
 	f := dockertest.New()
-	f.AddImage("app:latest", docker.ImageJSON{ID: "sha256:a", RepoDigests: []string{"app@" + dOld}})
+	f.AddImage("app:latest", docker.ImageJSON{ID: "sha256:a", RepoDigests: []string{"app@" + dOld},
+		Config: map[string]any{"Labels": map[string]any{"org.opencontainers.image.version": "1.4.0"}}})
 	f.AddImage("same:1", docker.ImageJSON{ID: "sha256:s", RepoDigests: []string{"same@" + dOld}})
 	f.AddImage("local:dev", docker.ImageJSON{ID: "sha256:l"})
 	f.AddImage("down:1", docker.ImageJSON{ID: "sha256:d", RepoDigests: []string{"down@" + dOld}})
@@ -73,8 +85,17 @@ func newEngine(t *testing.T) (*Engine, *fakeAdapter, *fakeAdapter) {
 	comp := &fakeAdapter{res: updater.Result{Outcome: updater.OutcomeRolledBack, Reason: "verify: unhealthy"}}
 	e := &Engine{
 		API: f, Store: st, Run: run, Compose: comp,
-		Registry: fakeRegistry{"app:latest": dNew, "same:1": dOld},
-		Now:      func() time.Time { return time.UnixMilli(1_700_000_000_000) },
+		Registry: fakeRegistry{
+			digests: map[string]string{"app:latest": dNew, "same:1": dOld},
+			labels: map[string]map[string]string{"app:latest": {
+				"org.opencontainers.image.version": "2.0.0",
+				"org.opencontainers.image.source":  "https://github.com/o/app",
+			}},
+		},
+		Changelog: fakeChangelog{releases: []changelog.Release{
+			{Tag: "v2.0.0", Body: "Config keys were renamed."}, {Tag: "v1.5.0", Body: "Small fixes."}, {Tag: "v1.4.0", Body: "Old."},
+		}},
+		Now: func() time.Time { return time.UnixMilli(1_700_000_000_000) },
 	}
 	return e, run, comp
 }
@@ -131,5 +152,26 @@ func TestUpdateRefusesSelfAndUnknown(t *testing.T) {
 	}
 	if _, err := e.Update(context.Background(), "nope"); err == nil {
 		t.Fatal("unknown container must error")
+	}
+}
+
+func TestCheckDescribesUpdates(t *testing.T) {
+	e, _, _ := newEngine(t)
+	if _, err := e.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	infos, err := e.Store.ListInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 2 || infos[0].Container != "app" {
+		t.Fatalf("want info for app and web, got %+v", infos)
+	}
+	app := infos[0]
+	if app.OldVersion != "1.4.0" || app.NewVersion != "2.0.0" || app.Repo != "o/app" || !app.Breaking {
+		t.Fatalf("app info: %+v", app)
+	}
+	if !strings.Contains(strings.Join(app.Reasons, " "), "Major version change from 1.4.0 to 2.0.0") {
+		t.Fatalf("missing major-change reason: %v", app.Reasons)
 	}
 }
