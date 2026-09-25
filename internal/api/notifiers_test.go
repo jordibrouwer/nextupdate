@@ -1,6 +1,9 @@
 package api
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -200,5 +203,42 @@ func TestWidgetTokenRotation(t *testing.T) {
 	h.srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("the old token must stop working: %d", rec.Code)
+	}
+}
+
+func testPushSub(t *testing.T, endpoint string) store.PushSub {
+	t.Helper()
+	priv, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authSecret := make([]byte, 16)
+	rand.Read(authSecret)
+	return store.PushSub{Endpoint: endpoint,
+		P256dh: base64.RawURLEncoding.EncodeToString(priv.PublicKey().Bytes()),
+		Auth:   base64.RawURLEncoding.EncodeToString(authSecret)}
+}
+
+func TestPushTest(t *testing.T) {
+	h := newHarness(t)
+	h.signIn()
+	if rec := h.do("POST", "/api/push/test", nil); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("push not configured: %d", rec.Code)
+	}
+	keys, _ := push.EnsureKeys(h.st)
+	h.srv.d.Push = &push.Sender{Keys: keys, Subject: "mailto:a@b.c"}
+	live := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(201) }))
+	defer live.Close()
+	gone := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(410) }))
+	defer gone.Close()
+	h.st.AddPushSub(testPushSub(t, live.URL+"/a"))
+	h.st.AddPushSub(testPushSub(t, gone.URL+"/b"))
+
+	got := decode[map[string]int](t, h.do("POST", "/api/push/test", nil))
+	if got["sent"] != 1 || got["removed"] != 1 {
+		t.Fatalf("result %v", got)
+	}
+	if left, _ := h.st.ListPushSubs(); len(left) != 1 {
+		t.Fatalf("the gone subscription must be deleted: %+v", left)
 	}
 }

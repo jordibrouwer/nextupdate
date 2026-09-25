@@ -4,12 +4,14 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/jordibrouwer/nextupdate/internal/notify"
+	"github.com/jordibrouwer/nextupdate/internal/push"
 	"github.com/jordibrouwer/nextupdate/internal/store"
 )
 
@@ -25,6 +27,7 @@ func (s *Server) registerNotifiers() {
 	s.mux.HandleFunc("GET /api/push/key", s.protected(s.handlePushKey))
 	s.mux.HandleFunc("POST /api/push/subscribe", s.protected(s.handlePushSubscribe))
 	s.mux.HandleFunc("POST /api/push/unsubscribe", s.protected(s.handlePushUnsubscribe))
+	s.mux.HandleFunc("POST /api/push/test", s.protected(s.handlePushTest))
 	s.mux.HandleFunc("GET /api/widget/token", s.protected(s.handleWidgetToken))
 	s.mux.HandleFunc("POST /api/widget/token/rotate", s.protected(s.handleWidgetRotate))
 	s.mux.HandleFunc("GET /api/widget", s.handleWidget)
@@ -300,4 +303,30 @@ func (s *Server) handleWidget(w http.ResponseWriter, r *http.Request) {
 	}
 	last, _ := s.d.Store.GetSetting("last_check")
 	writeJSON(w, http.StatusOK, map[string]any{"updates": len(avail), "breaking": breaking, "lastCheck": last, "url": s.d.BaseURL})
+}
+
+func (s *Server) handlePushTest(w http.ResponseWriter, r *http.Request) {
+	if s.d.Push == nil {
+		writeError(w, http.StatusServiceUnavailable, "Push notifications are not set up on this server.")
+		return
+	}
+	subs, err := s.d.Store.ListPushSubs()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not read the subscriptions.")
+		return
+	}
+	payload, _ := json.Marshal(map[string]string{"title": "nextupdate test", "body": "Push notifications work on this device.", "url": s.d.BaseURL})
+	sent, removed := 0, 0
+	for _, sub := range subs {
+		switch err := s.d.Push.Send(r.Context(), sub, payload); {
+		case errors.Is(err, push.ErrGone):
+			_ = s.d.Store.DeletePushSub(sub.Endpoint)
+			removed++
+		case err != nil:
+			s.logf("api: test push: %v", err)
+		default:
+			sent++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"sent": sent, "removed": removed})
 }

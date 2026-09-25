@@ -175,7 +175,8 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	if failed == nil {
 		failed = []Failure{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"running": s.jobs.Running(), "failed": failed})
+	last, _ := s.d.Store.GetSetting("last_check")
+	writeJSON(w, http.StatusOK, map[string]any{"running": s.jobs.Running(), "failed": failed, "lastCheck": last})
 }
 
 func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {

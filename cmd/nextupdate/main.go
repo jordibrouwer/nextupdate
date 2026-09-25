@@ -24,6 +24,7 @@ import (
 	"github.com/jordibrouwer/nextupdate/internal/store"
 	"github.com/jordibrouwer/nextupdate/internal/updater"
 	"github.com/jordibrouwer/nextupdate/internal/verify"
+	"github.com/jordibrouwer/nextupdate/internal/web"
 )
 
 var _ changelog.Cache = (*store.ChangelogCache)(nil)
@@ -137,7 +138,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 			BaseURL: baseURL, Version: version, BaseCtx: jobCtx,
 			Auth: &auth.Service{Store: st, Limiter: auth.NewLimiter(5, 15*time.Minute, time.Now)},
 		})
-		httpServer := &http.Server{Addr: envOr("NEXTUPDATE_LISTEN", ":8099"), Handler: server, ReadHeaderTimeout: 10 * time.Second}
+		httpServer := &http.Server{Addr: envOr("NEXTUPDATE_LISTEN", ":8099"), Handler: web.Mount(server), ReadHeaderTimeout: 10 * time.Second}
 
 		errs := make(chan error, 1)
 		go func() {

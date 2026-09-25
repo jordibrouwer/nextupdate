@@ -225,3 +225,13 @@ func TestJobsEmptyListsAreArrays(t *testing.T) {
 		t.Fatalf("empty lists must be JSON arrays, got %s", body)
 	}
 }
+
+func TestJobsReportsLastCheck(t *testing.T) {
+	h := newHarness(t)
+	h.signIn()
+	h.st.SetSetting("last_check", "2026-09-25T18:00:00Z")
+	got := decode[map[string]any](t, h.do("GET", "/api/jobs", nil))
+	if got["lastCheck"] != "2026-09-25T18:00:00Z" {
+		t.Fatalf("jobs %v", got)
+	}
+}

@@ -1,3 +1,8 @@
 .git
 docs
 test
+node_modules
+e2e
+web-test
+playwright-report
+test-results
