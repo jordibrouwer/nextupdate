@@ -23,7 +23,17 @@ services:
       - /srv/stacks:/srv/stacks
 ```
 
-The first visit to the API creates the admin account (`POST /api/setup`); the web UI for this comes in a later release.
+Open `http://your-server:8099`. The first visit creates the admin account.
+
+## The web UI
+
+- **Updates**: containers grouped as breaking, updates available and up to date. Pick one to read the release notes between your version and the new one, see why an update looks breaking, and update or roll back with one click. Set the policy (notify, automatic, never) per container. Keys: `j` and `k` move, `u` updates, `c` checks now.
+- **History**: every update and rollback, with its steps.
+- **Settings**: notifiers (ntfy, Gotify, Discord, Telegram, webhook, e-mail), push on this device, the token for the nextdash widget, and your account.
+
+Install it as an app from the browser menu. Push notifications need HTTPS (a reverse proxy) or `localhost`, and a browser that has a push service.
+
+Release notes come from GitHub and can contain anything, so the UI shows them as plain formatted text: no HTML, and only `http` and `https` links.
 
 ## Security
 

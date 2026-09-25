@@ -56,7 +56,7 @@ function showShell() {
                 toast(e.message, e.status === 409 ? 'info' : 'error');
             }
         },
-    }, icon('refresh'), h('span', {}, 'Check now'));
+    }, icon('refresh'), h('span', { class: 'label' }, 'Check now'));
     const themeBtn = h('button', {
         class: 'btn btn-ghost', type: 'button', 'aria-label': `Theme: ${themeState()}. Switch theme`, title: `Theme: ${themeState()}`,
         onclick: () => {
@@ -66,7 +66,7 @@ function showShell() {
         },
     }, icon('contrast'));
     const signOut = h('button', {
-        class: 'btn btn-ghost', type: 'button',
+        class: 'btn btn-ghost signout', type: 'button',
         onclick: async () => {
             try { await api.post('/api/logout'); } catch { /* the cookie is cleared either way */ }
             boot();
@@ -75,7 +75,7 @@ function showShell() {
 
     clear(root).append(h('div', { class: 'shell' },
         h('header', { class: 'header' },
-            h('a', { class: 'brand', href: '#/updates' }, icon('box', 20), 'nextupdate'),
+            h('a', { class: 'brand', href: '#/updates', 'aria-label': 'nextupdate' }, icon('box', 20), h('span', { class: 'brand-name' }, 'nextupdate')),
             h('nav', { class: 'nav', 'aria-label': 'Main' }, navLinks),
             h('div', { class: 'header-end' }, lastCheck, checkBtn, themeBtn, signOut)),
         main));
@@ -89,7 +89,7 @@ function showShell() {
     unsubscribeJobs = onJobs((jobs) => {
         const checking = jobs.running.some((j) => j.key === 'check');
         checkBtn.setAttribute('aria-busy', String(checking));
-        clear(checkBtn).append(checking ? spinner() : icon('refresh'), h('span', {}, checking ? 'Checking' : 'Check now'));
+        clear(checkBtn).append(checking ? spinner() : icon('refresh'), h('span', { class: 'label' }, checking ? 'Checking' : 'Check now'));
         paintLastCheck(jobs.lastCheck);
         clearInterval(tick);
         tick = setInterval(() => paintLastCheck(jobs.lastCheck), 30000);
