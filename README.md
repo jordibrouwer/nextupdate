@@ -28,7 +28,7 @@
 ```yaml
 services:
   nextupdate:
-    image: ghcr.io/jordibrouwer/nextupdate:latest   # available from the first release on
+    image: ghcr.io/jordibrouwer/nextupdate:latest
     restart: unless-stopped
     ports:
       - "8099:8099"
@@ -42,7 +42,7 @@ services:
       - /srv/stacks:/srv/stacks
 ```
 
-Until there is a release, build the image yourself. From a checkout, `make run` builds it and starts it on <http://localhost:8181> (data in `./data`); `make help` lists the other targets (`build`, `stop`, `restart`, `logs`, `test`). Change the port with `make run PORT=9000`. Or use `docker build -t nextupdate .` and `image: nextupdate` in the compose file above.
+To build the image yourself instead, from a checkout, `make run` builds it and starts it on <http://localhost:8181> (data in `./data`); `make help` lists the other targets (`build`, `stop`, `restart`, `logs`, `test`). Change the port with `make run PORT=9000`. Or use `docker build -t nextupdate .` and `image: nextupdate` in the compose file above.
 
 Open `http://your-server:8099`. The first visit creates the admin account.
 
