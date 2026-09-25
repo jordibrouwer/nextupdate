@@ -70,3 +70,11 @@ Policies: `notify` (default) tells you; `auto` updates patch and minor versions 
 ## nextdash widget
 
 Get the token from `GET /api/widget/token` (signed in). Then point a nextdash custom widget at `http://your-server:8099/api/widget` with the header `Authorization: Bearer <token>`. It returns `{"updates": N, "breaking": M, "lastCheck": "...", "url": "..."}`.
+
+## Releases
+
+Pushing a tag such as `v0.1.0` runs the tests, builds a multi-arch image (amd64 and arm64), pushes it to `ghcr.io/jordibrouwer/nextupdate` (and to Docker Hub when the `DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret are set) and creates a GitHub release. The image carries OCI labels for its version and source, so nextupdate can show release notes for itself.
+
+## License
+
+[MIT](LICENSE)
