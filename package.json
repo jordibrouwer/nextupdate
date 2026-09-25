@@ -2,7 +2,7 @@
   "name": "nextupdate-tests",
   "private": true,
   "scripts": {
-    "test:unit": "node --test web-test/",
+    "test:unit": "node --test web-test/*.test.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

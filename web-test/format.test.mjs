@@ -1,0 +1,45 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseVersion, versionChange, relativeTime, shortImageId, plural, outcomeLabel } from '../internal/web/static/js/format.js';
+
+test('parseVersion', () => {
+    assert.deepEqual(parseVersion('v1.2.3'), { major: 1, minor: 2, patch: 3, pre: '' });
+    assert.deepEqual(parseVersion('2'), { major: 2, minor: 0, patch: 0, pre: '' });
+    assert.deepEqual(parseVersion('1.2'), { major: 1, minor: 2, patch: 0, pre: '' });
+    assert.deepEqual(parseVersion('1.2.3-rc.1+build5'), { major: 1, minor: 2, patch: 3, pre: 'rc.1' });
+    for (const bad of ['', 'latest', '1.2.3.4', '1.x.3', undefined, null]) assert.equal(parseVersion(bad), null, String(bad));
+});
+
+test('versionChange', () => {
+    const cases = [
+        ['1.2.3', '1.2.3', 'same'], ['1.2.3', '1.2.4', 'patch'], ['1.2.3', '1.3.0', 'minor'],
+        ['1.2.3', '2.0.0', 'major'], ['1.2.3', '1.2.2', 'downgrade'], ['0.4.1', '0.4.2', 'patch'],
+        ['0.4.1', '0.5.0', 'major'], ['', '1.0.0', ''], ['1.0.0', 'latest', ''],
+    ];
+    for (const [a, b, want] of cases) assert.equal(versionChange(a, b), want, `${a} to ${b}`);
+});
+
+test('relativeTime', () => {
+    const now = Date.parse('2026-09-25T12:00:00Z');
+    const at = (ms) => new Date(now - ms).toISOString();
+    assert.equal(relativeTime(at(20_000), now), 'just now');
+    assert.equal(relativeTime(at(60_000), now), '1 minute ago');
+    assert.equal(relativeTime(at(5 * 60_000), now), '5 minutes ago');
+    assert.equal(relativeTime(at(3_600_000), now), '1 hour ago');
+    assert.equal(relativeTime(at(3 * 86_400_000), now), '3 days ago');
+    assert.match(relativeTime(at(60 * 86_400_000), now), /^\d{1,2} \w{3} 2026$/);
+    assert.equal(relativeTime(new Date(now + 60_000).toISOString(), now), '');
+    assert.equal(relativeTime('nonsense', now), '');
+    assert.equal(relativeTime('', now), '');
+});
+
+test('small helpers', () => {
+    assert.equal(shortImageId('sha256:0123456789abcdef0123'), '0123456789ab');
+    assert.equal(shortImageId(''), '');
+    assert.equal(plural(1, 'update', 'updates'), '1 update');
+    assert.equal(plural(3, 'update', 'updates'), '3 updates');
+    assert.equal(outcomeLabel('ok'), 'Updated');
+    assert.equal(outcomeLabel('rolled_back'), 'Rolled back');
+    assert.equal(outcomeLabel('failed'), 'Failed');
+    assert.equal(outcomeLabel('other'), 'other');
+});
