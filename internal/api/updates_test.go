@@ -33,11 +33,17 @@ func TestUpdatesListBreakingFirst(t *testing.T) {
 	h := newHarness(t)
 	h.signIn()
 	seedUpdates(t, h)
+	// "aaa" sorts before "immich" by name, so only the breaking flag can put immich first.
+	avail, _ := h.st.ListAvailable()
+	h.st.ReplaceAvailable(append(avail, store.Available{Container: "aaa", Image: "aaa:1", RemoteDigest: "sha256:9", DetectedAt: time.Now()}))
+	infos, _ := h.st.ListInfo()
+	h.st.ReplaceInfo(append(infos, store.Info{Container: "aaa", OldVersion: "1.0.0", NewVersion: "1.0.1"}))
+
 	list := decode[[]map[string]any](t, h.do("GET", "/api/updates", nil))
-	if len(list) != 2 || list[0]["container"] != "immich" || list[0]["breaking"] != true || list[1]["container"] != "sonarr" {
-		t.Fatalf("list %v", list)
+	if len(list) != 3 || list[0]["container"] != "immich" || list[0]["breaking"] != true || list[1]["container"] != "aaa" || list[2]["container"] != "sonarr" {
+		t.Fatalf("breaking first, then by name: %v", list)
 	}
-	if list[1]["policy"] != "auto" || list[0]["policy"] != "notify" || list[0]["newVersion"] != "2.0.0" {
+	if list[2]["policy"] != "auto" || list[0]["policy"] != "notify" || list[0]["newVersion"] != "2.0.0" {
 		t.Fatalf("fields %v", list)
 	}
 	if reasons, _ := list[0]["reasons"].([]any); len(reasons) != 1 {
