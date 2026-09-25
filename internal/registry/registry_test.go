@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	ggcrregistry "github.com/google/go-containerregistry/pkg/registry"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
@@ -89,5 +91,48 @@ func TestLocalDigest(t *testing.T) {
 	}
 	if _, ok := LocalDigest(docker.ImageJSON{}, "nginx"); ok {
 		t.Fatal("locally built image must not have a digest")
+	}
+}
+
+func TestRemoteLabels(t *testing.T) {
+	srv := httptest.NewServer(ggcrregistry.New())
+	defer srv.Close()
+	ref := strings.TrimPrefix(srv.URL, "http://") + "/team/app:2.0"
+
+	base, err := random.Image(256, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := mutate.Config(base, v1.Config{Labels: map[string]string{
+		LabelVersion: "2.0.0", LabelSource: "https://github.com/team/app",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(r, img); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := NewRemote().RemoteLabels(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[LabelVersion] != "2.0.0" || got[LabelSource] != "https://github.com/team/app" {
+		t.Fatalf("labels %v", got)
+	}
+}
+
+func TestLocalLabels(t *testing.T) {
+	img := docker.ImageJSON{Config: map[string]any{"Labels": map[string]any{LabelVersion: "1.4.0", "n": 5}}}
+	got := LocalLabels(img)
+	if got[LabelVersion] != "1.4.0" {
+		t.Fatalf("labels %v", got)
+	}
+	if got := LocalLabels(docker.ImageJSON{}); got == nil || len(got) != 0 {
+		t.Fatalf("want empty non-nil map, got %v", got)
 	}
 }

@@ -22,8 +22,14 @@ import (
 // told apart.
 var ErrNotPublished = errors.New("image not available in registry")
 
+const (
+	LabelVersion = "org.opencontainers.image.version"
+	LabelSource  = "org.opencontainers.image.source"
+)
+
 type Checker interface {
 	RemoteDigest(ctx context.Context, ref string) (string, error)
+	RemoteLabels(ctx context.Context, ref string) (map[string]string, error)
 }
 
 type Remote struct{ opts []remote.Option }
@@ -51,6 +57,40 @@ func (r *Remote) RemoteDigest(ctx context.Context, ref string) (string, error) {
 		return "", fmt.Errorf("head %s: %w", ref, err)
 	}
 	return desc.Digest.String(), nil
+}
+
+// RemoteLabels reads the labels of the image config a registry serves. It
+// downloads the manifest and the config blob, so call it only once an
+// update is known.
+func (r *Remote) RemoteLabels(ctx context.Context, ref string) (map[string]string, error) {
+	parsed, err := name.ParseReference(ref)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", ref, err)
+	}
+	img, err := remote.Image(parsed, append([]remote.Option{remote.WithContext(ctx)}, r.opts...)...)
+	if err != nil {
+		return nil, fmt.Errorf("get %s: %w", ref, err)
+	}
+	cfg, err := img.ConfigFile()
+	if err != nil {
+		return nil, fmt.Errorf("config %s: %w", ref, err)
+	}
+	if cfg == nil || cfg.Config.Labels == nil {
+		return map[string]string{}, nil
+	}
+	return cfg.Config.Labels, nil
+}
+
+// LocalLabels returns the labels of a local image.
+func LocalLabels(img docker.ImageJSON) map[string]string {
+	out := map[string]string{}
+	m, _ := img.Config["Labels"].(map[string]any)
+	for k, v := range m {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		}
+	}
+	return out
 }
 
 // LocalDigest returns the registry digest of a local image for the

@@ -30,6 +30,10 @@ func (r fakeRegistry) RemoteDigest(ctx context.Context, ref string) (string, err
 	return "", fmt.Errorf("unknown %s", ref)
 }
 
+func (r fakeRegistry) RemoteLabels(ctx context.Context, ref string) (map[string]string, error) {
+	return nil, nil
+}
+
 type fakeAdapter struct {
 	res  updater.Result
 	seen []string
