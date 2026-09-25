@@ -35,7 +35,7 @@ func runFixture(t *testing.T) (*dockertest.Fake, discovery.Container) {
 }
 
 func verifier(ok bool) Verifier {
-	return func(ctx context.Context, id string) verify.Result {
+	return func(ctx context.Context, name, id string) verify.Result {
 		if ok {
 			return verify.Result{OK: true}
 		}

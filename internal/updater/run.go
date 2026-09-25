@@ -109,7 +109,7 @@ func (r *Run) Update(ctx context.Context, c discovery.Container) Result {
 			return rollback(newID, "start: "+err.Error())
 		}
 		logf("verify %s", c.Name)
-		if v := r.Verify(ctx, newID); !v.OK {
+		if v := r.Verify(ctx, c.Name, newID); !v.OK {
 			return rollback(newID, "verify: "+v.Reason)
 		}
 	}

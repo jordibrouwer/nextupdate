@@ -30,7 +30,9 @@ type Adapter interface {
 	Update(ctx context.Context, c discovery.Container) Result
 }
 
-type Verifier func(ctx context.Context, id string) verify.Result
+// Verifier judges a new container. name is the container name (its settings
+// are looked up by name), id is the ID of the new container.
+type Verifier func(ctx context.Context, name, id string) verify.Result
 
 type Journal interface {
 	Begin(container, adapter string, data map[string]string) (int64, error)

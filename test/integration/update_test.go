@@ -74,7 +74,7 @@ func setup(t *testing.T) env {
 	buildImage(t, "nu-it:v1", "true")
 	e := env{api: api, journal: st.Journal(), v2: buildImage(t, "nu-it:v2", "true"), bad: buildImage(t, "nu-it:bad", "false")}
 	chk := verify.Check{Window: 20 * time.Second, Interval: 500 * time.Millisecond, MaxRestarts: 3}
-	e.verify = func(ctx context.Context, id string) verify.Result { return verify.Verify(ctx, api, id, chk) }
+	e.verify = func(ctx context.Context, name, id string) verify.Result { return verify.Verify(ctx, api, id, chk) }
 	return e
 }
 

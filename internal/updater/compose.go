@@ -128,7 +128,7 @@ func (cp *Compose) Update(ctx context.Context, c discovery.Container) Result {
 		return rollback(err.Error())
 	}
 	logf("verify %s", c.Name)
-	if v := cp.Verify(ctx, newID); !v.OK {
+	if v := cp.Verify(ctx, c.Name, newID); !v.OK {
 		return rollback("verify: " + v.Reason)
 	}
 	_ = cp.Journal.Step(jid, "verified", nil)

@@ -63,8 +63,7 @@ func run(ctx context.Context, cmd string, args []string) error {
 	if err != nil {
 		return fmt.Errorf("NEXTUPDATE_VERIFY_WINDOW: %w", err)
 	}
-	chk := verify.Check{Window: window, Interval: time.Second, MaxRestarts: 3}
-	verifier := func(ctx context.Context, id string) verify.Result { return verify.Verify(ctx, api, id, chk) }
+	verifier := engine.NewVerifier(api, st, verify.Check{Window: window, Interval: time.Second, MaxRestarts: 3})
 	journal := st.Journal()
 	runner := updater.ExecRunner{}
 	self, _ := os.Hostname()

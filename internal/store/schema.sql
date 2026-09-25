@@ -27,3 +27,11 @@ CREATE TABLE IF NOT EXISTS available (
   remote_digest TEXT    NOT NULL,
   detected_at   INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS container_settings (
+  container            TEXT PRIMARY KEY,
+  policy               TEXT    NOT NULL DEFAULT 'notify',
+  http_url             TEXT    NOT NULL DEFAULT '',
+  repo                 TEXT    NOT NULL DEFAULT '',
+  verify_window_seconds INTEGER NOT NULL DEFAULT 0
+);
