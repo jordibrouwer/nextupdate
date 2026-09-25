@@ -61,6 +61,9 @@ func (e *Engine) Check(ctx context.Context) ([]store.Available, error) {
 			continue // built locally, no registry to compare with
 		}
 		remote, err := e.Registry.RemoteDigest(ctx, c.Image)
+		if errors.Is(err, registry.ErrNotPublished) {
+			continue // local build or private repo: nothing to compare with
+		}
 		if err != nil {
 			e.logf("check %s: %v", c.Name, err)
 			continue

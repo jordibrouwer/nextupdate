@@ -4,14 +4,23 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 
 	"github.com/jordibrouwer/nextupdate/internal/docker"
 )
+
+// ErrNotPublished means the registry does not serve the image: a local
+// build, a private repository without credentials, or a removed tag. Docker
+// Hub answers 401 for a repository that does not exist, so these cannot be
+// told apart.
+var ErrNotPublished = errors.New("image not available in registry")
 
 type Checker interface {
 	RemoteDigest(ctx context.Context, ref string) (string, error)
@@ -32,6 +41,13 @@ func (r *Remote) RemoteDigest(ctx context.Context, ref string) (string, error) {
 	}
 	desc, err := remote.Head(parsed, append([]remote.Option{remote.WithContext(ctx)}, r.opts...)...)
 	if err != nil {
+		var terr *transport.Error
+		if errors.As(err, &terr) {
+			switch terr.StatusCode {
+			case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+				return "", fmt.Errorf("head %s: %w", ref, ErrNotPublished)
+			}
+		}
 		return "", fmt.Errorf("head %s: %w", ref, err)
 	}
 	return desc.Digest.String(), nil

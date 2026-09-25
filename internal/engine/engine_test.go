@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/jordibrouwer/nextupdate/internal/discovery"
 	"github.com/jordibrouwer/nextupdate/internal/docker"
 	"github.com/jordibrouwer/nextupdate/internal/dockertest"
+	"github.com/jordibrouwer/nextupdate/internal/registry"
 	"github.com/jordibrouwer/nextupdate/internal/store"
 	"github.com/jordibrouwer/nextupdate/internal/updater"
 )
@@ -20,6 +23,9 @@ type fakeRegistry map[string]string
 func (r fakeRegistry) RemoteDigest(ctx context.Context, ref string) (string, error) {
 	if d, ok := r[ref]; ok {
 		return d, nil
+	}
+	if ref == "down:1" {
+		return "", fmt.Errorf("head %s: %w", ref, registry.ErrNotPublished)
 	}
 	return "", fmt.Errorf("unknown %s", ref)
 }
@@ -71,6 +77,8 @@ func newEngine(t *testing.T) (*Engine, *fakeAdapter, *fakeAdapter) {
 
 func TestCheck(t *testing.T) {
 	e, _, _ := newEngine(t)
+	var buf bytes.Buffer
+	e.Log = log.New(&buf, "", 0)
 	got, err := e.Check(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +89,9 @@ func TestCheck(t *testing.T) {
 	stored, _ := e.Store.ListAvailable()
 	if len(stored) != 2 {
 		t.Fatalf("stored %+v", stored)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("not-published image must be skipped silently, log: %q", buf.String())
 	}
 }
 

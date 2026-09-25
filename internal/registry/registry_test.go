@@ -2,6 +2,8 @@ package registry
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -38,6 +40,34 @@ func TestRemoteDigest(t *testing.T) {
 	}
 	if got != want.String() {
 		t.Fatalf("got %s want %s", got, want)
+	}
+}
+
+func TestRemoteDigestNotPublished(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				return
+			}
+			w.WriteHeader(status)
+		}))
+		ref := strings.TrimPrefix(srv.URL, "http://") + "/team/app:1.0"
+		_, err := NewRemote().RemoteDigest(context.Background(), ref)
+		srv.Close()
+		if !errors.Is(err, ErrNotPublished) {
+			t.Errorf("status %d: want ErrNotPublished, got %v", status, err)
+		}
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	_, err := NewRemote().RemoteDigest(context.Background(), strings.TrimPrefix(srv.URL, "http://")+"/team/app:1.0")
+	if err == nil || errors.Is(err, ErrNotPublished) {
+		t.Fatalf("a 500 is a real failure, got %v", err)
 	}
 }
 
