@@ -38,7 +38,9 @@ test('a session that ends while the app is open goes back to sign in', async ({ 
     await page.goto('/');
     await expect(page.getByTestId('check-button')).toBeVisible();
     await page.context().clearCookies();
-    await page.getByRole('link', { name: 'History' }).click();
+    // Navigate through the URL rather than clicking a link: the background poll may
+    // notice the ended session first and replace the page, which is also a pass.
+    await page.evaluate(() => { location.hash = '#/history'; });
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 });
 
