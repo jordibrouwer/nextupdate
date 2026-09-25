@@ -49,10 +49,11 @@ func FindService(ctx context.Context, api docker.API, project, service string) (
 // file stays the source of truth. Rollback re-tags the old image and brings
 // the service up without pulling.
 type Compose struct {
-	API     docker.API
-	Runner  Runner
-	Journal Journal
-	Verify  Verifier
+	API      docker.API
+	Runner   Runner
+	Journal  Journal
+	Verify   Verifier
+	SkipPull bool // the image is already local (manual rollback)
 }
 
 func (cp *Compose) Update(ctx context.Context, c discovery.Container) Result {
@@ -80,10 +81,12 @@ func (cp *Compose) Update(ctx context.Context, c discovery.Container) Result {
 		return fail("journal: " + err.Error())
 	}
 
-	logf("compose pull %s", c.ComposeService)
-	if out, err := cp.Runner.Run(ctx, c.ComposeWorkdir, args("pull", c.ComposeService)...); err != nil {
-		cp.Journal.Close(jid)
-		return fail(fmt.Sprintf("compose pull: %v: %s", err, out))
+	if !cp.SkipPull {
+		logf("compose pull %s", c.ComposeService)
+		if out, err := cp.Runner.Run(ctx, c.ComposeWorkdir, args("pull", c.ComposeService)...); err != nil {
+			cp.Journal.Close(jid)
+			return fail(fmt.Sprintf("compose pull: %v: %s", err, out))
+		}
 	}
 	newImg, err := cp.API.InspectImage(ctx, c.Image)
 	if err != nil {
@@ -113,8 +116,13 @@ func (cp *Compose) Update(ctx context.Context, c discovery.Container) Result {
 		return res
 	}
 
+	upArgs := []string{"up", "-d", "--no-deps"}
+	if cp.SkipPull {
+		upArgs = append(upArgs, "--pull", "never")
+	}
+	upArgs = append(upArgs, c.ComposeService)
 	logf("compose up %s", c.ComposeService)
-	if out, err := cp.Runner.Run(rctx, c.ComposeWorkdir, args("up", "-d", "--no-deps", c.ComposeService)...); err != nil {
+	if out, err := cp.Runner.Run(rctx, c.ComposeWorkdir, args(upArgs...)...); err != nil {
 		return rollback(fmt.Sprintf("compose up: %v: %s", err, out))
 	}
 	if !old.State.Running {

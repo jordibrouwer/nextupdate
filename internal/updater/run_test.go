@@ -107,3 +107,18 @@ func TestRunStoppedContainerStaysStopped(t *testing.T) {
 		t.Fatalf("want new, not started: %+v", cur)
 	}
 }
+
+func TestRunSkipPull(t *testing.T) {
+	f, c := runFixture(t)
+	f.Images["app:latest"] = docker.ImageJSON{ID: "sha256:target"} // the tag already points at the target
+	f.Images["sha256:target"] = docker.ImageJSON{ID: "sha256:target"}
+	res := (&Run{API: f, Journal: testJournal(t), Verify: verifier(true), SkipPull: true}).Update(context.Background(), c)
+	if res.Outcome != OutcomeOK || res.ToImage != "sha256:target" {
+		t.Fatalf("res %+v", res)
+	}
+	for _, call := range f.Calls {
+		if strings.HasPrefix(call, "pull ") {
+			t.Fatalf("SkipPull must not pull: %v", f.Calls)
+		}
+	}
+}

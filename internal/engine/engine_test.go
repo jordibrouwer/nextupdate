@@ -266,3 +266,73 @@ func TestUpdateRunsOneAtATime(t *testing.T) {
 		t.Fatalf("updates overlapped: peak %d", slow.peak.Load())
 	}
 }
+
+func TestRollback(t *testing.T) {
+	e, _, _ := newEngine(t)
+	f := e.API.(*dockertest.Fake)
+	rbRun := &fakeAdapter{res: updater.Result{Outcome: updater.OutcomeOK, FromImage: "sha256:b", ToImage: "sha256:a"}}
+	e.RollbackRun = rbRun
+	e.Retention = time.Hour
+	ctx := context.Background()
+
+	if _, err := e.Rollback(ctx, "app"); !errors.Is(err, ErrNoRollback) {
+		t.Fatalf("no history yet: %v", err)
+	}
+	if _, err := e.Update(ctx, "app"); err != nil { // fakeAdapter: ok, sha256:a to sha256:b
+		t.Fatal(err)
+	}
+	f.Images["app:latest"] = docker.ImageJSON{ID: "sha256:b"} // the update moved the tag
+
+	h, err := e.Rollback(ctx, "app")
+	if err != nil || h.Outcome != updater.OutcomeOK || len(rbRun.seen) != 1 {
+		t.Fatalf("rollback: %+v %v", h, err)
+	}
+	if f.Images["app:latest"].ID != "sha256:a" {
+		t.Fatalf("the previous image must be tagged again, tag points to %s", f.Images["app:latest"].ID)
+	}
+	if !strings.HasPrefix(h.Reason, "Manual rollback.") {
+		t.Fatalf("reason %q", h.Reason)
+	}
+	due, _ := e.Store.DueOldImages(time.Now().Add(2 * time.Hour))
+	found := false
+	for _, o := range due {
+		found = found || o.ImageID == "sha256:b"
+	}
+	if !found {
+		t.Fatalf("the image rolled away from must be tracked for cleanup: %+v", due)
+	}
+}
+
+func TestRollbackNeedsThePreviousImage(t *testing.T) {
+	e, _, _ := newEngine(t)
+	f := e.API.(*dockertest.Fake)
+	e.RollbackRun = &fakeAdapter{}
+	if _, err := e.Update(context.Background(), "app"); err != nil {
+		t.Fatal(err)
+	}
+	for k, img := range f.Images { // as cleanup would have done
+		if img.ID == "sha256:a" {
+			delete(f.Images, k)
+		}
+	}
+	_, err := e.Rollback(context.Background(), "app")
+	if !errors.Is(err, ErrNoRollback) || !strings.Contains(err.Error(), "removed") {
+		t.Fatalf("want ErrNoRollback about a removed image, got %v", err)
+	}
+}
+
+func TestRollbackRefusesSelf(t *testing.T) {
+	e, _, _ := newEngine(t)
+	e.Self = "aaaaaaaaaaaa"
+	if _, err := e.Rollback(context.Background(), "app"); !errors.Is(err, ErrSelfUpdate) {
+		t.Fatalf("want ErrSelfUpdate, got %v", err)
+	}
+}
+
+func TestContainers(t *testing.T) {
+	e, _, _ := newEngine(t)
+	list, err := e.Containers(context.Background())
+	if err != nil || len(list) != 5 {
+		t.Fatalf("got %d containers, %v", len(list), err)
+	}
+}

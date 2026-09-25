@@ -20,6 +20,7 @@ import (
 )
 
 var ErrSelfUpdate = errors.New("nextupdate does not update its own container yet")
+var ErrNoRollback = errors.New("there is nothing to roll back to")
 
 type Engine struct {
 	API      docker.API
@@ -34,6 +35,9 @@ type Engine struct {
 	Changelog changelog.Source
 	Mappings  *changelog.Mappings
 	Retention time.Duration // how long an update keeps the previous image; 0 = do not track
+
+	RollbackRun     updater.Adapter // Run adapter with SkipPull
+	RollbackCompose updater.Adapter // Compose adapter with SkipPull
 
 	mu sync.Mutex // one update at a time
 }
@@ -191,4 +195,79 @@ func (e *Engine) Cleanup(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (e *Engine) Containers(ctx context.Context) ([]discovery.Container, error) {
+	return discovery.Discover(ctx, e.API)
+}
+
+// Rollback puts the previous image back. It keeps the previous image on
+// disk for Retention, so this works until Cleanup has removed it.
+func (e *Engine) Rollback(ctx context.Context, name string) (store.History, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	containers, err := discovery.Discover(ctx, e.API)
+	if err != nil {
+		return store.History{}, err
+	}
+	var target *discovery.Container
+	for i := range containers {
+		if containers[i].Name == name {
+			target = &containers[i]
+		}
+	}
+	if target == nil {
+		return store.History{}, fmt.Errorf("no container named %q", name)
+	}
+	if e.Self != "" && strings.HasPrefix(target.ID, e.Self) {
+		return store.History{}, ErrSelfUpdate
+	}
+	hist, err := e.Store.ListHistory(200)
+	if err != nil {
+		return store.History{}, err
+	}
+	var prev *store.History
+	for i := range hist {
+		h := hist[i]
+		if h.Container == name && h.Outcome == updater.OutcomeOK && h.FromImage != "" && h.FromImage != h.ToImage {
+			prev = &hist[i]
+			break
+		}
+	}
+	if prev == nil {
+		return store.History{}, fmt.Errorf("%w: no earlier update of %s is recorded", ErrNoRollback, name)
+	}
+	if _, err := e.API.InspectImage(ctx, prev.FromImage); errors.Is(err, docker.ErrNotFound) {
+		return store.History{}, fmt.Errorf("%w: the previous image was removed", ErrNoRollback)
+	} else if err != nil {
+		return store.History{}, err
+	}
+	repo, tag := docker.SplitRef(target.Image)
+	if err := e.API.TagImage(ctx, prev.FromImage, repo, tag); err != nil {
+		return store.History{}, fmt.Errorf("tag previous image: %w", err)
+	}
+	adapter := e.RollbackRun
+	if target.Source == discovery.SourceCompose {
+		adapter = e.RollbackCompose
+	}
+	started := e.now()
+	res := adapter.Update(ctx, *target)
+	reason := "Manual rollback."
+	if res.Reason != "" {
+		reason += " " + res.Reason
+	}
+	h := store.History{
+		Container: name, Image: target.Image, FromImage: res.FromImage, ToImage: res.ToImage,
+		StartedAt: started, FinishedAt: e.now(), Outcome: res.Outcome, Reason: reason, Log: res.Log,
+	}
+	if h.ID, err = e.Store.AddHistory(h); err != nil {
+		return h, err
+	}
+	if res.Outcome == updater.OutcomeOK && e.Retention > 0 && res.FromImage != "" && res.FromImage != res.ToImage {
+		if err := e.Store.AddOldImage(store.OldImage{ImageID: res.FromImage, Container: name, RemoveAfter: e.now().Add(e.Retention)}); err != nil {
+			return h, err
+		}
+	}
+	return h, nil
 }

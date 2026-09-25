@@ -108,3 +108,18 @@ func TestComposeRollsBackOnUpError(t *testing.T) {
 		t.Fatalf("service runs %s", got)
 	}
 }
+
+func TestComposeSkipPull(t *testing.T) {
+	f, runner, c := composeFixture(t)
+	f.Images["web:latest"] = docker.ImageJSON{ID: "sha256:target"}
+	f.Images["sha256:target"] = docker.ImageJSON{ID: "sha256:target"}
+	res := (&Compose{API: f, Runner: runner, Journal: testJournal(t), Verify: verifier(true), SkipPull: true}).Update(context.Background(), c)
+	if res.Outcome != OutcomeOK {
+		t.Fatalf("res %+v", res)
+	}
+	for _, call := range runner.calls {
+		if slices.Contains(call, "pull") && !slices.Contains(call, "never") {
+			t.Fatalf("SkipPull must not pull: %v", runner.calls)
+		}
+	}
+}

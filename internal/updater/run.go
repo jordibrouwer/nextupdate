@@ -13,9 +13,10 @@ import (
 // Run updates a container created with plain `docker run`: keep the old
 // container under a new name until the new one passes verification.
 type Run struct {
-	API     docker.API
-	Journal Journal
-	Verify  Verifier
+	API      docker.API
+	Journal  Journal
+	Verify   Verifier
+	SkipPull bool // the image is already local (manual rollback)
 }
 
 func (r *Run) Update(ctx context.Context, c discovery.Container) Result {
@@ -42,10 +43,12 @@ func (r *Run) Update(ctx context.Context, c discovery.Container) Result {
 		return fail("journal: " + err.Error())
 	}
 
-	logf("pull %s", c.Image)
-	if err := r.API.PullImage(ctx, c.Image); err != nil {
-		r.Journal.Close(jid)
-		return fail("pull: " + err.Error())
+	if !r.SkipPull {
+		logf("pull %s", c.Image)
+		if err := r.API.PullImage(ctx, c.Image); err != nil {
+			r.Journal.Close(jid)
+			return fail("pull: " + err.Error())
+		}
 	}
 	newImg, err := r.API.InspectImage(ctx, c.Image)
 	if err != nil {

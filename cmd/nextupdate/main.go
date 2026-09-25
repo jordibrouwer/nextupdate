@@ -101,10 +101,12 @@ func run(ctx context.Context, cmd string, args []string) error {
 	self, _ := os.Hostname()
 	eng := &engine.Engine{
 		API: api, Registry: registry.NewRemote(), Store: st, Self: self, Retention: keep,
-		Run:       &updater.Run{API: api, Journal: journal, Verify: verifier},
-		Compose:   &updater.Compose{API: api, Runner: runner, Journal: journal, Verify: verifier},
-		Changelog: &changelog.GitHub{Token: os.Getenv("NEXTUPDATE_GITHUB_TOKEN"), Cache: st.ChangelogCache()},
-		Mappings:  changelog.DefaultMappings(),
+		Run:             &updater.Run{API: api, Journal: journal, Verify: verifier},
+		Compose:         &updater.Compose{API: api, Runner: runner, Journal: journal, Verify: verifier},
+		RollbackRun:     &updater.Run{API: api, Journal: journal, Verify: verifier, SkipPull: true},
+		RollbackCompose: &updater.Compose{API: api, Runner: runner, Journal: journal, Verify: verifier, SkipPull: true},
+		Changelog:       &changelog.GitHub{Token: os.Getenv("NEXTUPDATE_GITHUB_TOKEN"), Cache: st.ChangelogCache()},
+		Mappings:        changelog.DefaultMappings(),
 	}
 
 	switch cmd {
