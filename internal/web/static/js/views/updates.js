@@ -1,4 +1,4 @@
-import { h, clear } from '../dom.js';
+import { h, clear, append } from '../dom.js';
 import { icon } from '../icons.js';
 import { api } from '../api.js';
 import { toast, badge, spinner, confirmDialog } from '../ui.js';
@@ -87,10 +87,10 @@ export function mountUpdates(container, params) {
         const section = (key, title, items) => items.length ? h('section', { dataset: { testid: `group-${key}` } },
             h('h2', { class: 'group-title' }, title, h('span', { class: 'count' }, String(items.length))),
             items.map(rowFor)) : null;
-        list.append(
+        append(list, [
             section('breaking', 'Breaking', g.breaking),
             section('updates', 'Updates available', g.updates),
-            section('current', 'Up to date', g.current));
+            section('current', 'Up to date', g.current)]);
     }
 
     function rowFor(c) {
@@ -181,8 +181,8 @@ export function mountUpdates(container, params) {
             if (!alive || selected !== c.name || !body.isConnected) return;
             clear(body);
             if (!data.releases.length) {
-                body.append(h('p', { class: 'muted' }, 'No release notes found.'),
-                    data.repo ? h('p', {}, h('a', { href: `https://github.com/${data.repo}/releases`, target: '_blank', rel: 'noopener noreferrer' }, 'Open releases on GitHub ', icon('external', 14))) : null);
+                append(body, [h('p', { class: 'muted' }, 'No release notes found.'),
+                    data.repo ? h('p', {}, h('a', { href: `https://github.com/${data.repo}/releases`, target: '_blank', rel: 'noopener noreferrer' }, 'Open releases on GitHub ', icon('external', 14))) : null]);
                 return;
             }
             for (const r of data.releases) {

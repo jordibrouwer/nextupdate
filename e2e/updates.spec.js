@@ -44,6 +44,7 @@ test('shows the breaking reasons and the release notes, and keeps untrusted mark
 test('a container without a known repo says there are no release notes', async ({ page }) => {
     await page.goto('/#/updates/flaky');
     await expect(page.getByTestId('changelog')).toContainText('No release notes found.');
+    await expect(page.getByTestId('changelog')).not.toContainText('null');
 });
 
 test('updating a patch release runs in the background and moves the container to up to date', async ({ page }) => {
@@ -71,6 +72,8 @@ test('a breaking update asks first, and cancelling changes nothing', async ({ pa
     await page.getByTestId('confirm-yes').click();
     await expect(page.getByTestId('toast').filter({ hasText: 'Updated immich' })).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId('group-current').locator('a.row[data-name="immich"]')).toBeVisible();
+    await expect(page.getByTestId('group-breaking')).toHaveCount(0); // an empty group is not drawn
+    await expect(page.locator('.list')).not.toContainText('null');
 });
 
 test('an update that fails its health check is reported as rolled back and stays available', async ({ page }) => {

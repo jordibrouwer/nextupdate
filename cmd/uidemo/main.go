@@ -210,7 +210,7 @@ func (e *engine) seed() error {
 	now := time.Now()
 	if _, err := e.st.AddHistory(store.History{
 		Container: "jellyfin", Image: "jellyfin/jellyfin:latest", FromImage: fakeID("jellyfin", "old"), ToImage: fakeID("jellyfin", "new"),
-		StartedAt: now.Add(-48 * time.Hour), FinishedAt: now.Add(-48*time.Hour + 20*time.Second), Outcome: "ok",
+		StartedAt: now.Add(-49 * time.Hour), FinishedAt: now.Add(-48*time.Hour - 30*time.Second), Outcome: "ok",
 		Log: []string{"pull jellyfin/jellyfin:latest", "stop jellyfin", "create jellyfin from jellyfin/jellyfin:latest", "verify jellyfin"},
 	}); err != nil {
 		return err

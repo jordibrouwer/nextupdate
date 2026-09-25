@@ -172,3 +172,10 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; text-align: center
     .last-check { display: none; }
     .btn { min-height: 36px; }
 }
+
+/* History */
+.history-entry { margin-bottom: 12px; }
+.history-entry h2 { font-size: 15px; }
+.history-entry p { margin: 6px 0 0; }
+.steps { background: var(--surface-2); border-radius: var(--radius); padding: 8px 10px; margin: 8px 0 0; overflow: auto; }
+.history-entry summary { cursor: pointer; margin-top: 8px; color: var(--text-2); }
