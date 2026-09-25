@@ -230,7 +230,7 @@ func TestCSRFHeaderRequired(t *testing.T) {
 
 func TestProtectedRoutesNeedLogin(t *testing.T) {
 	h := newHarness(t)
-	for _, p := range [][2]string{{"GET", "/api/me"}} {
+	for _, p := range [][2]string{{"GET", "/api/me"}, {"GET", "/api/updates"}, {"GET", "/api/containers"}, {"GET", "/api/history"}, {"GET", "/api/jobs"}, {"POST", "/api/check"}, {"POST", "/api/updates/x/apply"}, {"PUT", "/api/containers/x/settings"}} {
 		if rec := h.do(p[0], p[1], nil); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without login: %d", p[0], p[1], rec.Code)
 		}
