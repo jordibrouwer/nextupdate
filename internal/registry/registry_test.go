@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	ggcrregistry "github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -117,7 +118,7 @@ func TestRemoteLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := NewRemote().RemoteLabels(context.Background(), ref)
+	got, err := NewRemote().RemoteLabels(context.Background(), ref, Platform{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,5 +135,70 @@ func TestLocalLabels(t *testing.T) {
 	}
 	if got := LocalLabels(docker.ImageJSON{}); got == nil || len(got) != 0 {
 		t.Fatalf("want empty non-nil map, got %v", got)
+	}
+}
+
+// A multi-platform image: each child has its own labels, like a real release.
+func TestRemoteLabelsPicksTheHostPlatform(t *testing.T) {
+	srv := httptest.NewServer(ggcrregistry.New())
+	defer srv.Close()
+	ref := strings.TrimPrefix(srv.URL, "http://") + "/team/multi:1"
+
+	child := func(arch, version string) (v1.Image, v1.Descriptor) {
+		base, err := random.Image(128, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		img, err := mutate.Config(base, v1.Config{Labels: map[string]string{LabelVersion: version}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		img, err = mutate.ConfigFile(img, mustConfig(t, img, arch))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return img, v1.Descriptor{Platform: &v1.Platform{OS: "linux", Architecture: arch}}
+	}
+	amd, amdDesc := child("amd64", "1.0.0-amd64")
+	arm, armDesc := child("arm64", "1.0.0-arm64")
+	idx := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: amd, Descriptor: amdDesc}, mutate.IndexAddendum{Add: arm, Descriptor: armDesc})
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(r, idx); err != nil {
+		t.Fatal(err)
+	}
+
+	rem := NewRemote()
+	for _, c := range []struct {
+		p    Platform
+		want string
+	}{
+		{Platform{OS: "linux", Arch: "arm64", Variant: "v8"}, "1.0.0-arm64"}, // Docker reports v8; index children carry no variant
+		{Platform{OS: "linux", Arch: "amd64"}, "1.0.0-amd64"},
+	} {
+		got, err := rem.RemoteLabels(context.Background(), ref, c.p)
+		if err != nil || got[LabelVersion] != c.want {
+			t.Errorf("platform %+v: got %v %v, want %s", c.p, got, err, c.want)
+		}
+	}
+}
+
+func mustConfig(t *testing.T, img v1.Image, arch string) *v1.ConfigFile {
+	t.Helper()
+	cfg, err := img.ConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg = cfg.DeepCopy()
+	cfg.OS, cfg.Architecture = "linux", arch
+	return cfg
+}
+
+func TestPlatformOf(t *testing.T) {
+	got := PlatformOf(docker.ImageJSON{Os: "linux", Architecture: "arm", Variant: "v7"})
+	if got != (Platform{OS: "linux", Arch: "arm", Variant: "v7"}) {
+		t.Fatalf("got %+v", got)
 	}
 }

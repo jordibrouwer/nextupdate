@@ -129,3 +129,16 @@ func TestRemoveImageConflict(t *testing.T) {
 		t.Fatalf("want ErrConflict, got %v", err)
 	}
 }
+
+func TestInspectImageKeepsPlatformAndNames(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"Id":"sha256:1","RepoTags":["app:latest"],"RepoDigests":["app@sha256:2"],"Os":"linux","Architecture":"arm64","Variant":"v8","Config":{"Labels":{"a":"b"}}}`)
+	})
+	got, err := c.InspectImage(context.Background(), "app:latest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Os != "linux" || got.Architecture != "arm64" || got.Variant != "v8" || len(got.RepoTags) != 1 || got.RepoTags[0] != "app:latest" {
+		t.Fatalf("got %+v", got)
+	}
+}

@@ -66,11 +66,18 @@ func (e *Engine) Check(ctx context.Context) ([]store.Available, error) {
 	var infos []store.Info
 	for _, c := range containers {
 		img, err := e.API.InspectImage(ctx, c.ImageID)
-		if err != nil {
+		gone := errors.Is(err, docker.ErrNotFound)
+		if err != nil && !gone {
 			e.logf("check %s: inspect image: %v", c.Name, err)
 			continue
 		}
 		local, ok := registry.LocalDigest(img, c.Image)
+		if !ok && (gone || nameless(img)) {
+			// The tag moved to a newer image (a rollback, or a pull without a
+			// restart) and this container's image lost its name. It still came from
+			// a registry: on the containerd image store its ID is the manifest digest.
+			local, ok = digestOfImageID(c.ImageID)
+		}
 		if !ok {
 			continue // built locally, no registry to compare with
 		}
@@ -101,8 +108,8 @@ func (e *Engine) Check(ctx context.Context) ([]store.Available, error) {
 // available update. Missing pieces are logged and left empty: an update
 // without notes is still an update.
 func (e *Engine) describe(ctx context.Context, c discovery.Container, local docker.ImageJSON) store.Info {
-	info := store.Info{Container: c.Name, OldVersion: registry.LocalLabels(local)[registry.LabelVersion]}
-	remoteLabels, err := e.Registry.RemoteLabels(ctx, c.Image)
+	info := store.Info{Container: c.Name, OldVersion: e.localVersion(ctx, c, local)}
+	remoteLabels, err := e.Registry.RemoteLabels(ctx, c.Image, registry.PlatformOf(local))
 	if err != nil {
 		e.logf("check %s: read remote labels: %v", c.Name, err)
 	}
@@ -270,4 +277,32 @@ func (e *Engine) Rollback(ctx context.Context, name string) (store.History, erro
 		}
 	}
 	return h, nil
+}
+
+// nameless reports an image that has neither a tag nor a repo digest.
+func nameless(img docker.ImageJSON) bool {
+	return len(img.RepoTags) == 0 && len(img.RepoDigests) == 0
+}
+
+func digestOfImageID(id string) (string, bool) {
+	if strings.HasPrefix(id, "sha256:") && len(id) == len("sha256:")+64 {
+		return id, true
+	}
+	return "", false
+}
+
+// localVersion is the version the container runs. The image labels say so;
+// when the image is gone, the container's own labels do, because a container
+// inherits the labels of its image.
+func (e *Engine) localVersion(ctx context.Context, c discovery.Container, img docker.ImageJSON) string {
+	if v := registry.LocalLabels(img)[registry.LabelVersion]; v != "" {
+		return v
+	}
+	cont, err := e.API.InspectContainer(ctx, c.ID)
+	if err != nil {
+		return ""
+	}
+	labels, _ := cont.Config["Labels"].(map[string]any)
+	v, _ := labels[registry.LabelVersion].(string)
+	return v
 }

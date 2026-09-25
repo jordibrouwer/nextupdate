@@ -23,11 +23,12 @@ import (
 )
 
 type fakeRegistry struct {
-	digests map[string]string
-	labels  map[string]map[string]string
+	digests  map[string]string
+	labels   map[string]map[string]string
+	platform registry.Platform // what RemoteLabels was last asked for
 }
 
-func (r fakeRegistry) RemoteDigest(ctx context.Context, ref string) (string, error) {
+func (r *fakeRegistry) RemoteDigest(ctx context.Context, ref string) (string, error) {
 	if d, ok := r.digests[ref]; ok {
 		return d, nil
 	}
@@ -37,7 +38,8 @@ func (r fakeRegistry) RemoteDigest(ctx context.Context, ref string) (string, err
 	return "", fmt.Errorf("unknown %s", ref)
 }
 
-func (r fakeRegistry) RemoteLabels(ctx context.Context, ref string) (map[string]string, error) {
+func (r *fakeRegistry) RemoteLabels(ctx context.Context, ref string, p registry.Platform) (map[string]string, error) {
+	r.platform = p
 	return r.labels[ref], nil
 }
 
@@ -87,7 +89,7 @@ func newEngine(t *testing.T) (*Engine, *fakeAdapter, *fakeAdapter) {
 	comp := &fakeAdapter{res: updater.Result{Outcome: updater.OutcomeRolledBack, Reason: "verify: unhealthy"}}
 	e := &Engine{
 		API: f, Store: st, Run: run, Compose: comp,
-		Registry: fakeRegistry{
+		Registry: &fakeRegistry{
 			digests: map[string]string{"app:latest": dNew, "same:1": dOld},
 			labels: map[string]map[string]string{"app:latest": {
 				"org.opencontainers.image.version": "2.0.0",

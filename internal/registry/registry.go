@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 
@@ -27,9 +29,22 @@ const (
 	LabelSource  = "org.opencontainers.image.source"
 )
 
+// Platform is the OS and CPU a local image was built for. The zero value
+// means "this machine".
+type Platform struct {
+	OS      string
+	Arch    string
+	Variant string
+}
+
+// PlatformOf reads the platform of a local image.
+func PlatformOf(img docker.ImageJSON) Platform {
+	return Platform{OS: img.Os, Arch: img.Architecture, Variant: img.Variant}
+}
+
 type Checker interface {
 	RemoteDigest(ctx context.Context, ref string) (string, error)
-	RemoteLabels(ctx context.Context, ref string) (map[string]string, error)
+	RemoteLabels(ctx context.Context, ref string, p Platform) (map[string]string, error)
 }
 
 type Remote struct{ opts []remote.Option }
@@ -62,12 +77,24 @@ func (r *Remote) RemoteDigest(ctx context.Context, ref string) (string, error) {
 // RemoteLabels reads the labels of the image config a registry serves. It
 // downloads the manifest and the config blob, so call it only once an
 // update is known.
-func (r *Remote) RemoteLabels(ctx context.Context, ref string) (map[string]string, error) {
+func (r *Remote) RemoteLabels(ctx context.Context, ref string, p Platform) (map[string]string, error) {
 	parsed, err := name.ParseReference(ref)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", ref, err)
 	}
-	img, err := remote.Image(parsed, append([]remote.Option{remote.WithContext(ctx)}, r.opts...)...)
+	// A multi-platform image has one config per platform, so ask for the one the
+	// container runs. The library's default is amd64, which is wrong on arm hosts.
+	plat := v1.Platform{OS: "linux", Architecture: runtime.GOARCH}
+	if p.OS != "" {
+		plat.OS = p.OS
+	}
+	if p.Arch != "" {
+		plat.Architecture = p.Arch
+		if p.Arch == "arm" { // only 32-bit arm builds carry a variant that matters; Docker's arm64 "v8" is not in index entries
+			plat.Variant = p.Variant
+		}
+	}
+	img, err := remote.Image(parsed, append([]remote.Option{remote.WithContext(ctx), remote.WithPlatform(plat)}, r.opts...)...)
 	if err != nil {
 		return nil, fmt.Errorf("get %s: %w", ref, err)
 	}

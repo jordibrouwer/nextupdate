@@ -122,3 +122,41 @@ func TestRunSkipPull(t *testing.T) {
 		}
 	}
 }
+
+// When the tag has moved, the running container's image may have no record any
+// more. The update must still go ahead; it just cannot subtract that image's defaults.
+func TestRunUpdateSurvivesAMissingOldImageRecord(t *testing.T) {
+	f, c := runFixture(t)
+	delete(f.Images, "sha256:old")
+	delete(f.Images, "app:latest")
+	f.OnPull = func(ref string) { f.AddImage(ref, docker.ImageJSON{ID: "sha256:new"}) }
+	res := (&Run{API: f, Journal: testJournal(t), Verify: verifier(true)}).Update(context.Background(), c)
+	if res.Outcome != OutcomeOK || res.ToImage != "sha256:new" {
+		t.Fatalf("res %+v", res)
+	}
+	found := false
+	for _, l := range res.Log {
+		found = found || strings.Contains(l, "not available")
+	}
+	if !found {
+		t.Fatalf("the log should say the old image record was missing: %v", res.Log)
+	}
+	cur, err := f.InspectContainer(context.Background(), "app")
+	if err != nil || cur.Image != "sha256:new" || !cur.State.Running {
+		t.Fatalf("app after update: %+v %v", cur, err)
+	}
+}
+
+func TestRunUpdateStillFailsOnOtherInspectErrors(t *testing.T) {
+	f, c := runFixture(t)
+	res := (&Run{API: brokenInspect{f}, Journal: testJournal(t), Verify: verifier(true)}).Update(context.Background(), c)
+	if res.Outcome != OutcomeFailed || !strings.Contains(res.Reason, "inspect current image") {
+		t.Fatalf("res %+v", res)
+	}
+}
+
+type brokenInspect struct{ *dockertest.Fake }
+
+func (brokenInspect) InspectImage(ctx context.Context, ref string) (docker.ImageJSON, error) {
+	return docker.ImageJSON{}, errors.New("daemon exploded")
+}

@@ -52,9 +52,13 @@ type ContainerJSON struct {
 }
 
 type ImageJSON struct {
-	ID          string         `json:"Id"`
-	RepoDigests []string       `json:"RepoDigests"`
-	Config      map[string]any `json:"Config"`
+	ID           string         `json:"Id"`
+	RepoTags     []string       `json:"RepoTags"`
+	RepoDigests  []string       `json:"RepoDigests"`
+	Config       map[string]any `json:"Config"`
+	Os           string         `json:"Os"`
+	Architecture string         `json:"Architecture"`
+	Variant      string         `json:"Variant"`
 }
 
 type NetworkingConfig struct {

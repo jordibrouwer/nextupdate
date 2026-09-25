@@ -34,7 +34,11 @@ func (r *Run) Update(ctx context.Context, c discovery.Container) Result {
 	}
 	res.FromImage = old.Image
 	oldImg, err := r.API.InspectImage(ctx, old.Image)
-	if err != nil {
+	if errors.Is(err, docker.ErrNotFound) {
+		// The tag moved and the image record went with it. Carry on with the
+		// container's own settings; the image defaults cannot be subtracted.
+		logf("previous image record is not available; keeping the container's own settings")
+	} else if err != nil {
 		return fail("inspect current image: " + err.Error())
 	}
 	wasRunning := old.State.Running
