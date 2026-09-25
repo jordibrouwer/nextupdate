@@ -1,0 +1,10 @@
+{
+  "entries": [
+    { "image": "docker.io/vaultwarden/server", "repo": "dani-garcia/vaultwarden", "breaking": [] },
+    { "image": "docker.io/jellyfin/jellyfin", "repo": "jellyfin/jellyfin", "breaking": [] },
+    { "image": "docker.io/louislam/uptime-kuma", "repo": "louislam/uptime-kuma", "breaking": [] },
+    { "image": "ghcr.io/immich-app/immich-server", "repo": "immich-app/immich", "breaking": [] },
+    { "image": "ghcr.io/home-assistant/home-assistant", "repo": "home-assistant/core", "breaking": [] },
+    { "image": "docker.io/jordibrouwer/nextdash", "repo": "jordibrouwer/nextdash", "breaking": [] }
+  ]
+}
