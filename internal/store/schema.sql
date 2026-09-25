@@ -57,3 +57,10 @@ CREATE TABLE IF NOT EXISTS old_images (
   container    TEXT    NOT NULL,
   remove_after INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS seen (
+  container TEXT NOT NULL,
+  kind      TEXT NOT NULL,
+  digest    TEXT NOT NULL,
+  PRIMARY KEY (container, kind)
+);

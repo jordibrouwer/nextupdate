@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -123,5 +124,22 @@ func (s *Store) DueOldImages(now time.Time) ([]OldImage, error) {
 
 func (s *Store) DeleteOldImage(imageID string) error {
 	_, err := s.db.Exec(`DELETE FROM old_images WHERE image_id = ?`, imageID)
+	return err
+}
+
+// Seen returns the digest last announced ("available") or last attempted
+// ("attempted") for a container, or "" when there is none.
+func (s *Store) Seen(container, kind string) (string, error) {
+	var digest string
+	err := s.db.QueryRow(`SELECT digest FROM seen WHERE container = ? AND kind = ?`, container, kind).Scan(&digest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return digest, err
+}
+
+func (s *Store) MarkSeen(container, kind, digest string) error {
+	_, err := s.db.Exec(`INSERT INTO seen (container, kind, digest) VALUES (?, ?, ?)
+		ON CONFLICT(container, kind) DO UPDATE SET digest = excluded.digest`, container, kind, digest)
 	return err
 }

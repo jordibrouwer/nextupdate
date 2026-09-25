@@ -8,6 +8,8 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -225,5 +227,42 @@ func TestCleanupKeepsImageStillInUse(t *testing.T) {
 	}
 	if due, _ := e.Store.DueOldImages(now); len(due) != 1 {
 		t.Fatalf("row must stay for the next cycle: %+v", due)
+	}
+}
+
+type slowAdapter struct {
+	active, peak atomic.Int32
+}
+
+func (a *slowAdapter) Update(ctx context.Context, c discovery.Container) updater.Result {
+	n := a.active.Add(1)
+	for {
+		p := a.peak.Load()
+		if n <= p || a.peak.CompareAndSwap(p, n) {
+			break
+		}
+	}
+	time.Sleep(30 * time.Millisecond)
+	a.active.Add(-1)
+	return updater.Result{Outcome: updater.OutcomeOK}
+}
+
+func TestUpdateRunsOneAtATime(t *testing.T) {
+	e, _, _ := newEngine(t)
+	slow := &slowAdapter{}
+	e.Run = slow
+	var wg sync.WaitGroup
+	for _, name := range []string{"app", "same", "local"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := e.Update(context.Background(), name); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if slow.peak.Load() != 1 {
+		t.Fatalf("updates overlapped: peak %d", slow.peak.Load())
 	}
 }

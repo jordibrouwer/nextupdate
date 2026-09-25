@@ -11,4 +11,4 @@ COPY --from=build /out/nextupdate /usr/local/bin/nextupdate
 ENV NEXTUPDATE_DATA=/data
 VOLUME /data
 ENTRYPOINT ["nextupdate"]
-CMD ["check"]
+CMD ["serve"]

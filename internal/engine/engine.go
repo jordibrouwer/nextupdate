@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jordibrouwer/nextupdate/internal/changelog"
@@ -33,6 +34,8 @@ type Engine struct {
 	Changelog changelog.Source
 	Mappings  *changelog.Mappings
 	Retention time.Duration // how long an update keeps the previous image; 0 = do not track
+
+	mu sync.Mutex // one update at a time
 }
 
 func (e *Engine) now() time.Time {
@@ -122,6 +125,8 @@ func (e *Engine) describe(ctx context.Context, c discovery.Container, local dock
 }
 
 func (e *Engine) Update(ctx context.Context, name string) (store.History, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	containers, err := discovery.Discover(ctx, e.API)
 	if err != nil {
 		return store.History{}, err

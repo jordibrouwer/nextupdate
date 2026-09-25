@@ -66,3 +66,25 @@ func TestOldImages(t *testing.T) {
 		t.Fatalf("still due: %+v", due)
 	}
 }
+
+func TestSeen(t *testing.T) {
+	s := openTest(t)
+	if d, err := s.Seen("app", "available"); err != nil || d != "" {
+		t.Fatalf("empty: %q %v", d, err)
+	}
+	if err := s.MarkSeen("app", "available", "sha256:1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkSeen("app", "attempted", "sha256:2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkSeen("app", "available", "sha256:3"); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := s.Seen("app", "available"); d != "sha256:3" {
+		t.Fatalf("available: %q", d)
+	}
+	if d, _ := s.Seen("app", "attempted"); d != "sha256:2" {
+		t.Fatalf("kinds must not mix: %q", d)
+	}
+}
