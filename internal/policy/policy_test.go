@@ -29,6 +29,10 @@ func TestDecide(t *testing.T) {
 		{"auto breaking", store.PolicyAuto, "app:1", info("1.0.0", "1.1.0", true, "Release v1.1.0 mentions \"breaking\"."), Notify, "Breaking"},
 		{"auto unknown version", store.PolicyAuto, "app:latest", info("", "", false), Notify, "unknown"},
 		{"auto protected", store.PolicyAuto, "postgres:16", info("16.1.0", "16.2.0", false), Notify, "protected"},
+		// linuxserver.io versions: four numbers and a build suffix
+		{"auto linuxserver rebuild", store.PolicyAuto, "lscr.io/linuxserver/sonarr:latest", info("4.0.20.3014-ls325", "4.0.20.3014-ls326", false), Update, ""},
+		{"auto linuxserver patch", store.PolicyAuto, "lscr.io/linuxserver/sonarr:latest", info("4.0.20.3014-ls325", "4.0.21.3020-ls326", false), Update, ""},
+		{"auto linuxserver major", store.PolicyAuto, "lscr.io/linuxserver/sonarr:latest", info("4.0.20.3014-ls325", "5.0.0.1-ls1", false), Notify, "major"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

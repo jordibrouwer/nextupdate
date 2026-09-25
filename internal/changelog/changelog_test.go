@@ -174,3 +174,14 @@ func TestGitHubStatuses(t *testing.T) {
 		}
 	}
 }
+
+func TestBetweenReadsLinuxserverTags(t *testing.T) {
+	all := []Release{rel("4.0.21.3020-ls326", false), rel("4.0.20.3014-ls326", false), rel("4.0.20.3014-ls325", false), rel("4.0.19.2900-ls320", false)}
+	var got []string
+	for _, r := range Between(all, "4.0.20.3014-ls325", "4.0.21.3020-ls326") {
+		got = append(got, r.Tag)
+	}
+	if len(got) != 2 || got[0] != "4.0.21.3020-ls326" || got[1] != "4.0.20.3014-ls326" {
+		t.Fatalf("got %v", got)
+	}
+}

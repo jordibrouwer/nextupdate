@@ -27,6 +27,8 @@ func TestClassify(t *testing.T) {
 		{"flagged version already passed", "1.5.0", "1.6.0", nil, []string{"1.5.0"}, false, ""},
 		{"flagged, old unknown, equals new", "", "1.5.0", nil, []string{"v1.5.0"}, true, "community mapping"},
 		{"unknown versions, quiet notes", "", "", nil, nil, false, ""},
+		{"linuxserver rebuild is fine", "4.0.20.3014-ls325", "4.0.20.3014-ls326", nil, nil, false, ""},
+		{"linuxserver major jump", "4.0.20.3014-ls325", "5.0.0.1-ls1", nil, nil, true, "Major version change from 4.0.20.3014-ls325 to 5.0.0.1-ls1"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

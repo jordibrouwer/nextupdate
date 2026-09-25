@@ -3,11 +3,17 @@ import assert from 'node:assert/strict';
 import { parseVersion, versionChange, relativeTime, shortImageId, plural, outcomeLabel } from '../internal/web/static/js/format.js';
 
 test('parseVersion', () => {
-    assert.deepEqual(parseVersion('v1.2.3'), { major: 1, minor: 2, patch: 3, pre: '' });
-    assert.deepEqual(parseVersion('2'), { major: 2, minor: 0, patch: 0, pre: '' });
-    assert.deepEqual(parseVersion('1.2'), { major: 1, minor: 2, patch: 0, pre: '' });
-    assert.deepEqual(parseVersion('1.2.3-rc.1+build5'), { major: 1, minor: 2, patch: 3, pre: 'rc.1' });
-    for (const bad of ['', 'latest', '1.2.3.4', '1.x.3', undefined, null]) assert.equal(parseVersion(bad), null, String(bad));
+    const v = (major, minor, patch, extra = {}) => ({ major, minor, patch, rev: 0, build: 0, pre: '', ...extra });
+    assert.deepEqual(parseVersion('v1.2.3'), v(1, 2, 3));
+    assert.deepEqual(parseVersion('2'), v(2, 0, 0));
+    assert.deepEqual(parseVersion('1.2'), v(1, 2, 0));
+    assert.deepEqual(parseVersion('1.2.3-rc.1+build5'), v(1, 2, 3, { pre: 'rc.1' }));
+    // linuxserver.io style: a fourth number and an image build suffix
+    assert.deepEqual(parseVersion('4.0.20.3014-ls325'), v(4, 0, 20, { rev: 3014, build: 325 }));
+    assert.deepEqual(parseVersion('1.26.3-r0-ls345'), v(1, 26, 3, { build: 345 }));
+    assert.deepEqual(parseVersion('1.2.3-ls'), v(1, 2, 3, { pre: 'ls' }));
+    assert.deepEqual(parseVersion('1.2.3.4'), v(1, 2, 3, { rev: 4 }));
+    for (const bad of ['', 'latest', '1.2.3.4.5', '1.x.3', undefined, null]) assert.equal(parseVersion(bad), null, String(bad));
 });
 
 test('versionChange', () => {
@@ -15,6 +21,12 @@ test('versionChange', () => {
         ['1.2.3', '1.2.3', 'same'], ['1.2.3', '1.2.4', 'patch'], ['1.2.3', '1.3.0', 'minor'],
         ['1.2.3', '2.0.0', 'major'], ['1.2.3', '1.2.2', 'downgrade'], ['0.4.1', '0.4.2', 'patch'],
         ['0.4.1', '0.5.0', 'major'], ['', '1.0.0', ''], ['1.0.0', 'latest', ''],
+        ['4.0.20.3014-ls325', '4.0.20.3014-ls326', 'patch'], // the image was rebuilt
+        ['4.0.20.3014-ls325', '4.0.21.3020-ls326', 'patch'],
+        ['4.0.20.3014-ls325', '4.1.0.1-ls1', 'minor'],
+        ['4.0.20.3014-ls325', '5.0.0.1-ls1', 'major'],
+        ['4.0.20.3020-ls9', '4.0.20.3014-ls325', 'downgrade'],
+        ['4.0.20.3014-ls325', '4.0.20.3014-ls325', 'same'],
     ];
     for (const [a, b, want] of cases) assert.equal(versionChange(a, b), want, `${a} to ${b}`);
 });

@@ -50,7 +50,7 @@ Good to know:
 
 - **Compose projects** must be mounted at the same path inside the container as on the host, because Compose records host paths on the containers it creates.
 - **Private registries:** mount your Docker credentials, for example `~/.docker/config.json` at `/root/.docker/config.json`.
-- **Version labels:** for `auto` updates and release notes, an image needs an `org.opencontainers.image.version` label that reads like `1.2.3`. Vaultwarden, Immich and nextupdate itself have one. Without one, or with a format nextupdate doesn't read yet (see Limits), the update still works by hand, and `auto` stays off for that container.
+- **Version labels:** for `auto` updates and release notes, an image needs an `org.opencontainers.image.version` label. Vaultwarden, Immich, linuxserver.io images and nextupdate itself have one. nextupdate reads `1.2.3`, a fourth number (`4.0.20.3014`) and the linuxserver.io build suffix (`4.0.20.3014-ls325`). Without a label, or with a version it can't read, the update still works by hand, and `auto` stays off for that container.
 - **Release notes:** they come from the GitHub repository in the image's `org.opencontainers.image.source` label, from a small built-in list of well-known images, or from a repository you set per container.
 
 ## How it works
@@ -116,7 +116,8 @@ Get the token from the Settings page. Then point a nextdash custom widget at `ht
 - One Docker host. Other hosts are not supported yet.
 - nextupdate does not update itself; it refuses to update its own container and says why.
 - Sources are Compose services and `docker run` containers. Unraid templates are not read yet.
-- Versions with more than three numbers, such as linuxserver.io's `4.0.20.3014-ls325`, are not read yet. Those containers show an unknown version, so they stay on `notify` and get no release notes. Suffixes like `-ls123` on a three-number version count as pre-releases, so their notes can be missing too.
+- Versions are read as up to four numbers, an optional build suffix (`-ls325`) and an optional pre-release tag. Anything else, such as a date or a branch name, shows an unknown version, so that container stays on `notify` and gets no release notes.
+- For linuxserver.io images the release notes come from the image repository (for example `linuxserver/docker-sonarr`), which lists the image's changes and the application's changes together.
 - A private repository without credentials looks the same as a local build, and is skipped without a message.
 - A container's `auto` policy is ignored while its version is unknown.
 
